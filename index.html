@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TradeX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..900&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app">
+
+  <div id="appShell">
+
+  <header class="topbar">
+    <a class="brand" href="#" data-nav="feed">
+      <svg class="logo-mark" viewBox="0 0 40 40" width="34" height="34" aria-hidden="true">
+        <line x1="9" y1="9" x2="31" y2="31" stroke="var(--accent-strong)" stroke-width="7" stroke-linecap="round"></line>
+        <line x1="31" y1="9" x2="9" y2="31" stroke="var(--accent-2-strong)" stroke-width="7" stroke-linecap="round"></line>
+      </svg>
+      <span class="brand-word">TradeX</span>
+    </a>
+
+    <button class="nav-toggle" id="navToggleBtn" aria-label="Abrir menú" aria-expanded="false" title="Menú">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+    </button>
+
+    <nav class="topnav" id="topNav">
+      <button data-nav="feed" aria-current="true">Inicio</button>
+      <button data-nav="directorio">Directorio</button>
+      <button data-nav="rfq">Oportunidades</button>
+      <button data-nav="planes">Planes</button>
+      <button data-nav="mapa">Mapa</button>
+    </nav>
+
+    <div class="searchbox">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
+      <input id="globalSearch" type="text" placeholder="Buscar empresas, categorías, ubicaciones…" />
+    </div>
+
+    <div class="topbar-right">
+      <button class="icon-btn" id="notifBtn" hidden aria-label="Notificaciones" title="Notificaciones">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path></svg>
+      </button>
+      <button class="btn btn-outline btn-sm" id="authToggleBtn">Iniciar sesión</button>
+      <button class="btn btn-accent btn-sm" id="registerToggleBtn">Registrarme</button>
+      <button class="my-avatar" id="myAvatarBtn" hidden title="Tu cuenta" aria-label="Tu cuenta">PE</button>
+
+      <div class="account-menu" id="accountMenu" hidden>
+        <button type="button" class="account-menu-item" id="accountMenuProfile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"></path></svg>
+          Ver mi perfil
+        </button>
+        <button type="button" class="account-menu-item" id="accountMenuEdit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+          Editar perfil
+        </button>
+        <div class="account-menu-sep"></div>
+        <button type="button" class="account-menu-item account-menu-danger" id="accountMenuLogout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5"></path><path d="M21 12H9"></path></svg>
+          Cerrar sesión
+        </button>
+      </div>
+
+      <div class="auth-dropdown" id="editProfileDropdown" hidden>
+        <h2>Editar perfil</h2>
+        <p class="sub">Así te ven las demás empresas de la red.</p>
+        <form id="editProfileForm">
+          <div class="avatar-edit-row">
+            <div class="avatar-lg avatar-edit-preview" id="editPhotoPreview">—</div>
+            <div class="avatar-edit-actions">
+              <input type="file" accept="image/*" id="editPhotoInput" hidden />
+              <button type="button" class="btn btn-outline btn-sm" id="editPhotoPickBtn">Subir foto</button>
+              <button type="button" class="link-btn" id="editPhotoRemoveBtn">Quitar foto</button>
+            </div>
+          </div>
+          <div class="form-grid" style="margin-top:14px;">
+            <div class="field"><label>Nombre de la empresa</label><input type="text" id="editEmpresa" required /></div>
+            <div class="field"><label>Nombre de contacto</label><input type="text" id="editContactoNombre" required /></div>
+          </div>
+          <div class="form-grid" style="margin-top:12px;">
+            <div class="field"><label>Email de contacto</label><input type="email" id="editContactoEmail" required /></div>
+            <div class="field"><label>Teléfono de contacto</label><input type="tel" id="editTelefono" required /></div>
+          </div>
+          <div class="form-grid" style="margin-top:12px;">
+            <div class="field">
+              <label>Categoría</label>
+              <select id="editVinculo" required></select>
+            </div>
+            <div class="field"><label>Sector</label><input type="text" id="editSector" required /></div>
+          </div>
+          <div class="field" style="margin-top:12px;">
+            <label>Descripción</label>
+            <textarea id="editDescripcion" rows="3" placeholder="Contales a las demás empresas a qué se dedica tu empresa…"></textarea>
+          </div>
+          <div class="field" style="margin-top:12px;">
+            <label>Fuente pública (opcional)</label>
+            <input type="url" id="editFuente" placeholder="Link a un comunicado, LinkedIn o sitio que respalde el vínculo" />
+          </div>
+          <div class="form-error" id="editProfileError" hidden></div>
+          <div style="display:flex;gap:10px;margin-top:18px;">
+            <button type="button" class="btn btn-outline btn-block" id="editProfileCancel">Cancelar</button>
+            <button type="submit" class="btn btn-accent btn-block">Guardar cambios</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="auth-dropdown" id="authDropdown" hidden>
+
+        <!-- LOGIN -->
+        <div class="auth-pane" data-auth-pane="login">
+          <h2>Bienvenido de nuevo</h2>
+          <p class="sub">Entrá para ver la red de empresas verificadas de TradeX.</p>
+          <form id="loginForm">
+            <div class="field" style="margin-bottom:12px;"><label>Email</label><input type="email" id="loginEmail" placeholder="vos@empresa.com" required /></div>
+            <div class="field"><label>Contraseña</label><input type="password" id="loginPassword" placeholder="••••••••" required /></div>
+            <div class="form-error" id="loginError" hidden></div>
+            <button type="submit" class="btn btn-accent btn-block" style="margin-top:18px;">Ingresar</button>
+          </form>
+          <div class="auth-foot">¿Todavía no estás registrado? <button type="button" data-auth-tab="register">Registrate acá</button></div>
+        </div>
+
+        <!-- REGISTER -->
+        <div class="auth-pane" data-auth-pane="register" hidden>
+          <h2>Sumate a TradeX</h2>
+          <div class="auth-tabs" id="regAudienceTabs">
+            <button type="button" data-reg-tab="empresa" aria-selected="true">Soy una empresa</button>
+            <button type="button" data-reg-tab="proveedor" aria-selected="false">Soy un proveedor</button>
+          </div>
+          <p class="sub" id="regSubtext">Registrá tu empresa para pedir cotizaciones a proveedores verificados de la red.</p>
+          <form id="registerForm">
+            <div class="form-grid">
+              <div class="field"><label>Nombre de la empresa</label><input type="text" id="regEmpresa" placeholder="Ej: Servicios del Sur S.A." required /></div>
+              <div class="field"><label>Nombre de contacto</label><input type="text" id="regContactoNombre" placeholder="Ej: Juan Pérez" required /></div>
+            </div>
+            <div class="form-grid" style="margin-top:12px;">
+              <div class="field"><label>Email de contacto</label><input type="email" id="regEmail" placeholder="contacto@empresa.com" required /></div>
+              <div class="field"><label>Teléfono de contacto</label><input type="tel" id="regTelefono" placeholder="Ej: +54 9 11 1234-5678" required /></div>
+            </div>
+            <div class="form-grid" style="margin-top:12px;">
+              <div class="field">
+                <label>Categoría</label>
+                <select id="regVinculo" required></select>
+              </div>
+              <div class="field"><label>Sector</label><input type="text" id="regSector" placeholder="Ej: Servicios industriales" required /></div>
+            </div>
+            <div class="field" style="margin-top:12px;"><label>Contraseña</label><input type="password" id="regPassword" placeholder="••••••••" required minlength="6" /><div class="field-hint">Mínimo 6 caracteres.</div></div>
+            <div class="field" style="margin-top:12px;">
+              <label>Fuente pública (opcional)</label>
+              <input type="url" id="regFuente" placeholder="Link a un comunicado, LinkedIn o sitio que respalde el vínculo" />
+              <div class="field-hint">Con fuente, tu ficha arranca con evidencia Media-Alta. Sin fuente, arranca en Media — el mismo criterio que usamos con el resto de la base.</div>
+            </div>
+            <div class="form-error" id="regError" hidden></div>
+            <button type="submit" class="btn btn-accent btn-block" style="margin-top:18px;">Crear perfil</button>
+          </form>
+          <div class="auth-foot">¿Ya tenés cuenta? <button type="button" data-auth-tab="login">Iniciar sesión</button></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <!-- LEFT RAIL -->
+    <aside class="rail rail-left">
+      <div class="card profile-mini">
+        <div class="cover"></div>
+        <div class="body">
+          <div class="avatar-lg" id="accountAvatar" style="background:var(--surface-2);color:var(--ink-faint)">—</div>
+          <div>
+            <div class="name" id="accountName">Invitado</div>
+            <div class="role" id="accountRole">Iniciá sesión para crear tu perfil</div>
+            <div class="plan-chip" id="accountPlan" style="margin-top:6px;display:flex;align-items:center;"></div>
+          </div>
+          <div class="mini-stats" id="accountStats">
+            <div class="mini-stat"><b>44</b><span>Empresas en la red</span></div>
+            <div class="mini-stat"><b>35</b><span>Evidencia alta</span></div>
+            <div class="mini-stat"><b class="mono" style="color:var(--accent-strong)">5</b><span>Categorías</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-pad">
+        <div class="rail-title">Tu espacio</div>
+        <nav class="nav-list">
+          <a data-nav="feed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17 9 11l4 4 8-8"></path></svg>Actividad</a>
+          <a data-nav="directorio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"></rect><circle cx="9" cy="9" r="2.2"></circle><path d="M21 15l-4.5-4.5L9 18"></path></svg>Directorio</a>
+          <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 3 6v6c0 5 4 8 9 10 5-2 9-5 9-10V6l-9-4Z"></path></svg>Fuentes citadas</a>
+          <a data-nav="rfq"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.3 2"></path></svg>Historial de RFQs</a>
+          <a data-nav="mapa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2.2"></circle><circle cx="5" cy="17" r="2.2"></circle><circle cx="19" cy="17" r="2.2"></circle><path d="M12 7.2v3M10.3 15.3 12 10.2l1.7 5.1M7 16.3l3-4M17 16.3l-3-4"></path></svg>Mapa de red</a>
+        </nav>
+      </div>
+
+      <div class="card card-pad">
+        <div class="rail-title">Categorías</div>
+        <div class="filters">
+          <span class="tag">Proveedores</span><span class="tag">Contratistas / EPC</span><span class="tag">Proveedores tecnológicos</span><span class="tag">Operadores / productoras</span><span class="tag">Servicios profesionales</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER -->
+    <section>
+
+      <!-- FEED -->
+      <div class="view" id="view-feed">
+        <div class="view-head">
+          <div>
+            <h2>Actividad reciente</h2>
+            <p>Novedades, evidencia citada y movimientos en tu red.</p>
+          </div>
+        </div>
+
+        <div class="card card-pad composer">
+          <div class="composer-row">
+            <div class="avatar-lg" id="composerAvatar" style="width:40px;height:40px;border-radius:11px;border:0;font-size:.75rem;background:var(--surface-2);color:var(--ink-faint)">—</div>
+            <textarea id="composerText" placeholder="Comparte una novedad, disponibilidad o logro de tu empresa…" rows="1"></textarea>
+          </div>
+          <div class="composer-foot">
+            <span style="font-size:.76rem;color:var(--ink-faint)" id="composerHint">Visible para toda tu red B2B</span>
+            <button class="btn btn-accent btn-sm" id="publishPost">Publicar</button>
+          </div>
+        </div>
+
+        <div id="feedList" class="view" style="gap:14px;"></div>
+      </div>
+
+      <!-- DIRECTORIO -->
+      <div class="view" id="view-directorio" hidden>
+        <div class="view-head">
+          <div>
+            <h2>Directorio de empresas</h2>
+            <p id="dirCount">Empresas verificadas en la red, con fuente y nivel de evidencia citados.</p>
+          </div>
+        </div>
+        <div class="filters" id="categoryFilters"></div>
+        <div class="grid-companies" id="companyGrid"></div>
+      </div>
+
+      <!-- RFQ -->
+      <div class="view" id="view-rfq" hidden>
+        <div class="view-head">
+          <div>
+            <h2>Oportunidades abiertas</h2>
+            <p>Requerimientos publicados por compradores de la red.</p>
+          </div>
+          <button class="btn btn-outline btn-sm" id="toggleRfqForm">+ Publicar requerimiento</button>
+        </div>
+
+        <div class="card card-pad" id="rfqForm" hidden>
+          <h3 style="font-size:1rem;margin-bottom:12px;">Nuevo requerimiento</h3>
+          <div class="form-grid">
+            <div class="field"><label>Categoría</label><input id="fCategoria" placeholder="p. ej. Empaque corrugado" /></div>
+            <div class="field"><label>Ubicación</label><input id="fUbicacion" placeholder="p. ej. León, GTO" /></div>
+            <div class="field"><label>Entrega requerida</label><input id="fEntrega" placeholder="p. ej. 15 de noviembre" /></div>
+            <div class="field"><label>Presupuesto estimado</label><input id="fPresupuesto" placeholder="p. ej. $80–120k MXN" /></div>
+          </div>
+          <div class="field" style="margin-top:12px;"><label>Título del requerimiento</label><input id="fTitulo" placeholder="p. ej. Empaque corrugado — 50,000 u/mes" /></div>
+          <div style="display:flex; gap:10px; margin-top:14px;">
+            <button class="btn btn-accent btn-sm" id="submitRfq">Publicar RFQ</button>
+            <span style="font-size:.76rem;color:var(--ink-faint); align-self:center;">Los proveedores relevantes de tu categoría serán notificados.</span>
+          </div>
+        </div>
+
+        <div id="rfqList" style="display:flex;flex-direction:column;gap:14px;"></div>
+      </div>
+
+      <!-- COMPANY DETAIL -->
+      <div class="view" id="view-detail" hidden>
+        <button class="back-link" id="backBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"></path></svg>
+          Volver
+        </button>
+        <div class="card" id="detailCard"></div>
+      </div>
+
+      <!-- MAPA DE RED -->
+      <div class="view" id="view-mapa" hidden>
+        <div class="view-head">
+          <div>
+            <h2>Mapa de la red</h2>
+            <p>Cómo se conectan las empresas verificadas de TradeX, agrupadas por categoría. Tocá un punto para ver la ficha.</p>
+          </div>
+        </div>
+        <div class="card card-pad" style="overflow-x:auto;">
+          <svg id="networkMap" viewBox="0 0 900 760" style="display:block;width:100%;min-width:640px;height:auto;"></svg>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT RAIL -->
+    <aside class="rail rail-right">
+      <div class="card card-pad">
+        <div class="rail-title">Cómo se verifica un perfil</div>
+        <p style="font-size:.82rem;color:var(--ink-soft);line-height:1.5;">
+          Cada perfil se arma a partir de fuentes públicas — sitios corporativos, comunicados, LinkedIn, registros oficiales — citadas y clasificadas por nivel de evidencia (Alta, Media-Alta o Media). La evidencia indica qué tan verificable es el perfil de cada empresa, de forma independiente: no hay una empresa central de referencia.
+        </p>
+      </div>
+
+      <div class="card card-pad" style="background:color-mix(in srgb, var(--accent-3) 10%, var(--surface));border-color:var(--accent-3);">
+        <div class="rail-title" style="color:var(--accent-3-strong);">Publicidad</div>
+        <p style="font-size:.86rem;font-weight:800;color:var(--ink);margin-bottom:4px;">Certificate como proveedor de Vaca Muerta</p>
+        <p style="font-size:.8rem;color:var(--ink-soft);line-height:1.5;margin-bottom:12px;">Programa de homologación para PyMEs industriales — cupos abiertos para la próxima cohorte.</p>
+        <a class="btn btn-outline btn-sm btn-block" href="#" target="_blank" rel="noopener noreferrer sponsored">Más información</a>
+      </div>
+
+      <div class="card card-pad">
+        <div class="rail-title">Empresas sugeridas</div>
+        <div id="suggestList"></div>
+      </div>
+
+      <div class="card card-pad founder-card">
+        <div class="rail-title">Equipo fundador</div>
+        <div class="founder-row">
+          <div class="avatar-sm"><img src="data:image/jpeg;base64,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" alt="Alejandro Bulacio Moreno" /></div>
+          <div class="info"><b style="font-size:.85rem;">Alejandro Bulacio Moreno</b><span style="font-size:.74rem;color:var(--ink-faint);">Cofundador · Producto</span></div>
+        </div>
+        <div class="founder-row">
+          <div class="avatar-sm"><img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBAUEBAYFBQUGBgYHCQ4JCQgICRINDQoOFRIWFhUSFBQXGiEcFxgfGRQUHScdHyIjJSUlFhwpLCgkKyEkJST/2wBDAQYGBgkICREJCREkGBQYJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCT/wAARCACgAKADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD1TFKBSgU4CrIExSgUoFLigBuKMU7FGKAG0mKdikoAKKGZUUuxCqOrE4A/GsW88a+GrBitzr2nIw6gTBj/AOO5oA2qMVz8HxB8J3L7I9fsC3+05XP5gVtW17a3q77a5hnX1jcMP0oAmxRilpaAGYoIp+KTFAEZFNK1KRTSKAIitNIqUimkUATAU4CgCnAUAJijFOxRQAmKSnUhFADTXkXxG+PFt4euJdL8OwxX97GSstw5zFC3oAPvEfXFaPxx+IC+FtAOkWNwyatqK7V2HDQw9GfPbPQfj6V8uSTchEHTjNRKXRFJHR65478SeJ7jzNT1O6uxnIi34iX6IOP0qGz1edXAmuIVA5O1C2B6GsNZmQbUcLnrg8mlXezKxkjb0Bl21BR2Be31S3PkvayuRkhiwZR9BisiHVNS8O3QuLDUHtnU8CF3Uj8+Km0mO4jYTS25gi6+fu8yL8Tu/lVjUlaf99BKJV7tGwKD8TyPxxSHa57R8L/jZaaxZmy8S3kVvdxAbbiT5VmHvjgH9DXrdvcQ3USzQSpLG4yrowII9iK+Jrq2AtBMV2tv2kf/AKq9L+D3jm98OTR2lzI0+mTnnJz5R6ZH9R6fSrU+5LifSVGKbDIk0aSxsGRxkEdDUmK0IGEU2pCKaRQBGRTWFSkUwigCWlFIKcKAClpKdigBtRXNxFaW8tzcSCOGFGkkc9FUDJP5CpiK4/4uzPb/AA219kYIWtthJOOGYAj8QSPxoGfLXjrxZN4y8T3utyZVZ3228Z/5Zwrwo+uOfqTXOspAG3PPr3qORiJCe2e1b/hfw3Nrl7HvVhATyfUVjJ2V2aRi5OyK2i+GdR145t4SV6A4wDXX2Pwg12RM+SiMRwy5yPzr1nwR4cg0xYh5agemOlen2dvD5KsqAHpXFPEu9kejTwkeW8j550H4E+IdQnxO8kSHjduroV/ZyvLGQGK7Of4scfh9K+gbRlQJgAAVfDqwzgU/aSa3F7KMXsfNvjD4Jy2egE2bbpIgWII6fSvPNEWHT7CSFsrPExEidPxH+e1fYOowrNE6FQcgjFfJHxc01vDHiy6gjBEV0onTHb1p0ajcuVk4iklHmR7Z8GvFY8Q6DLaSuGuLFtje69m/H+YNehYr5h/Z21eaH4gm0Xc0V5ZyK49CuCD+n619PgV3xeh5stxKTFOIpCKoQwimEVKRTDQAopwpgpwoAcBTgMUgpaACuA+Oc8cHww1nft+cRIuRn5jIuMe/vXf15p+0Jcxx/Di6tWJ826niWJQPvFW3H9BSew0rs+UIVUvhhwTxXsXga2WG2gXaAW5H0ryfRrU3mqW1sRwzjd9K9Vmu7jT0SOxVBMQFUnoo9a5azvojrw6t7zPWtKITYCQK7XTCjKFZhzXzz/xMreBRceOLGwuW/wBXCNxdiegxyc+nFWfDnj/VtEuwuo6rJdxZwCQeffkA1xex6noqv9lo+kMeWwAIwOauQ8oMtziuT0jVp9X0wX0Kloyu4EV5t428cXMEoWPxFPpsKMfMkVGYLz1wvNEWm7Dmmlc9vnAwcNnjpXz1+0VpkRgsr90/eEPCGx3xmuh0K8i1aZRZ/EKS8u1G5YJIjExbGRgNj1B78Gl+Kel3niD4cXrXUYa/tCLkBRjJU4JA91Jpr3Zpmc1z02jyX9nho0+JNiJMbpLefZ82OdnT3r6wr5M+A1nI/wAQNOukx+4Z1Kt3DKw4/wA9q+tAOK9SDujyJJrViUhFOpKsgaRTCKkNMNADRThTRThQA8UtIKWgArzn466Lc6p4QhubZN/2C7SeRf8ApmRtJ/DIr0eo7u1hvbWa1uF3wzI0bj1UjBqZK6sXTlyyUj4xsbWG18Xolucxhzj9a9RsdAfVbf8AdSbZDyOMmuW1XwTJoPiqdZXeN7aZgRjhx1DD2YEGuz8I3hS7SMsOD0Jrgqt20PTowXNboyfS/hzZIiwX+kfaBu3l3bBZvUnrmtLxv4atbyyikks40kiRY0K5O1QOB+Fd5bXkJhG7bnHU1xXiLxGupalNpNlLHvgj3yO3fOeB+VcyqSbO2VGCR0/wxkI8MfZgSRGCp96t654EtdZy8UNuRIu2SN04ceh/KofhtAV0yTjaGQtj0rd1PXToUUVxLEHtywWQgcoP71G2oWvojFh+H2jLZw2b6LZQxwsXj8rgxtx8y9MHgdKta7Y+XoV5C7tKfs0iZfqRtPWunttQsruATROrZGRWB4iT7fayWiOYzP8Aut69V3cZH51M907kpWTVjgvgr4TtLLRLLWRbILq5aWQuV5CbiAP5/pXqdVNH0yHSbCGyt0CQ2yCGNR/dXj8z1NXcV61CLUbvqePipJz5V00G0lOxSGtjmGmmnpTzTDQBGDTlNRg09aAJBTqjBp4oAcKdTc0ooA83+KfgsXKzeJbeUiSGNVnhK5DKDjcD2wCMj2rzC2mkhuo2jPOcV9I39rFfWFxazf6uaNo2+hGK+a0IS4ZEcOUb5WB4bB7fUVyV4W1R24eo3o+h3M2s3VpYKuCHdeC3GPevP9a06S5kN1buRP1yrcn8RXpVzDY+I/DkDHdHKq+UzIxBUfh3BrhIfDV9Y6i0I1a4aMNwjAbgM9iME5rkpNL1PQqc07JbHV/DPxB4qtbb7Jc2DGNmws3UIOxNeipDEIJ47lvtDXA2yl/4uMfgPauS8PaXfQwRiLVb1d+Qw89Rhu3Vc4rYs/C2o3t2Gv8AXb6SMAlo4mC7x/vY3Y/KiVtzZU5x3Kfh+W/0XUG0qcbosM9tKDkOgPT6jIrqAklzPCEYK5kDZxnbjmqcGlQaddlBvIjXEZdyxGcZ5OfQVp6OhluppeSkQ2A+rHk/kP51nShz1EuhlXrOFNu+pqxp5aBclsdz3paU0hr2UraHhNtu7ENIaKQ0xCGmmnU00AVwacDUSmng0ASg04GowacDQBIDTgaizXm/xe+KsXg3TX07SZ0k124XC7SG+yKert/teg9eTwOQCPxf8RZbv4g2PgrSLkRxQq0+pyofmfC5EAPbtu7849a8x1axl0W+ltSTmJzsJ7rnKn8q4fwjrL6T4usNVuJXYCbE7scllfhiT365r3rxV4SfxBbC4s9pvIl+UZ4mX0z6+lZVYcy0NqUlF6nHaV4i+xlUc5hlOGU/wt613A0S31i0iukmXAGOTyD25ryh4GWR4JVaORGKsrDBBHUH0Nbuka3qOlR7I28yL0PauCVO+x6FOry6PY9P0vwzKroftIdRgAtId36V21rAtpDtDYHr615npnxBtkhi8xCsikZB7VozeNJ9TXyrdGRTwWIxj6DvUuD6m7qq2hraxqQe5dbYjex2qo9a62xtUsrSOBMnaOSerHuT+NcFp0a2CtqlypKw4c55yARXpF0FLLNF/qplEq46AHt+ea6MIldnBjG7IipM0maM13HCBNIaM0lACGkJpaaelAFMGnhqgBrJ8QeM9C8LpnVNQihkxkQr80rfRRz+eKAN8NWJ4o8c6F4Ph36reqkpGUt4/mlf6L2HucCvH/Fnx21O+323h+EafCePPfDzEe3ZfwyfevL57i41C4ee5mknmc5aSRixY+5NAzvvGXxt1/xAZLbTC2lWLHaBC371x/tP1/BcfjXnK25mj81ySzkkk8knNW4bfcRkd6tWcW60HH8TY/76NFgMT7MQ/C8V9D/CrxENY8PxQTPm7s8Qvk8sv8J/L+VeHvbABieAO9dH8Ndf/sTxLE0rlYJ8RSA9gTwfwP8AOmB7h4s+GVr4xi+2WZS21VV4c8LOB/C/v6N2+ledHwpqemStb3ULxyxHaysOV/xr3vT5PszwufusBWzruiaXrOnfaLqWK2kjXidiAMejeo/WuavRb96O500KyT5Z7Hz1YaFLNJhXVSO23k12uj6HBZRhn+d/7xq1e+GpbWZZY1yOqunKsPY1pWNm5VNykH3rzpSezPSUI7owfG8v2DwvMVGDJJEn5yLT/i9Dqmm+AtE17SLy5tbrSphbzNC5GY5BgbvUB1HX+9TfGQXUb/SNFXnzb2NpAP7qHcf0Wu416Cx1XwdqHh67YifVbd/KG3IRifkJ9PmArpwe7ZzY7ZI8S8OfHbU4Ases2kV/GOGkixFKPw+6f0r0/wAO+P8Aw94nwljfotwR/wAe8/7uT8Aev4E18tyRzWc5yMMDtIPqDyKtBgADyD1HtXonmn12eOvFITXzX4f+JXiXw3tSG/e7tx/y73RMi49ieR+Br03w/wDG3Q9RVY9WjfS5zgbjmSI/iBkfiKVhHoxppFNhniuIUmhkSWKRQyOhyrA9CDTiaAPn3xj8cL29WS18PxtY25yv2p8GZx/sjon868tuLia6leWV3kkc5ZnbLMfcnrVe0mEgKN9MH0q0kBViOcdQfUUDIo4y565q7FEODx3oSEgntViKPHIHGaYBHH8uc81RkSa3l8y3uHi3c7D8yE/Q/wBK0yNvbIqjFP8A8TMwzKMFd0J9QOo+tAFiP7RIii6SNWPOEzg1WJMNyr9MH9K02GVHHPrVS7hyCw5oA+ovh3rw8W+F7B4zvuY1EEoHXcvf8Rg/jXSarZXU6eW6s/lj5Yz3HqPevE/2bfEa2evz6NMwH29MwMe0yZIH/Al3D6gV9OG3j1CFJB8sg5DDsaTGjirESrbR26WkjEcSBfmyPpnrT5Lf7EJGP8PTI5rpZ9HFyWlhXyrpPvKOA1YGuieO2wQWmkdYlB6lycD/AD7VyYqneN0dmEnaXK9jm9F0J9T8QDVH5EJeOIe5HzN+AOPqaj8RR3Xh7xPrOrXRb7KdJ82IH7qGEEgfX5j+degabocml3tokJBhSNlceueS34msX40aP/bHw91iJNwkjh80FCQSFIJBx1HHStKNPkjYzr1faSuj5GdmfJkOWb5iT3J6/rTSD9TTUYyRI5yGxjNKCwbDYI/vD+oroOYO/wDnimOvBz2PFEp2c4zUcj8HpnHSgD1n4HeL5PtU3hi5lLRsGmtcn7hHLIPYjn8D617Ka+SPDGsvofiez1NGObeSOY47qGww/wC+Sa+tsgjKnIPIPtSEfDtv8uDjBzmtq2Pmx47jke9ZEDAjHatG0bY444z60xl5cEAj/wDXU0OCvTOaqs/lylTxjkfjViF+Bz1oAldeAKz721M0YKMFmjO+NvRv8D0rRYgdTUBHvxQIWyuBd2yygFT0ZT1UjqPzqSSPepFU0P2S7D9IZ8K3+y/Y/j0/KtLGTjGKAIdB1G50XWLa+tJDHPbyrLG2f4lII/lX254a1u31vTrPU7Uj7PqEKzoB/CSOV/A5H4V8N3KFJNy19Gfs6+JjfaHeaDLJmaxf7XbjPPlucOPwbB/4HSY0e6FQzBujDoao6pYw3dzaF0BdJBKMf3gMA/qatQyCSNWFMWMS6luJP7uEY/Fv/rVLKTsTqCg561Q1m1W9027tnGVmhdCPqDWjJ1qGQA8euRQI+EHhME08DAgwysn5GkbpgE/h3rd8d2H9leOtcstu1VuWcD2Jz/WsLPAJ6GrQmQ3JKg46VXVyyHnp71Nc/NwCcbRzVRG5xmgRWZibuRO7QOB+lfXXhTUP7U8MaRfZDGezicn32gH9Qa+RXGL1mP8AzyfPNfRnwM1b+0vAMEDHL2M0lvj0XO5f0agZ/9k=" alt="Nicolás Wilke" /></div>
+          <div class="info"><b style="font-size:.85rem;">Nicolás Wilke</b><span style="font-size:.74rem;color:var(--ink-faint);">Cofundador · Tecnología</span></div>
+        </div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- PLANES -->
+  <div class="view" id="view-planes" hidden>
+    <div class="plans-wrap">
+
+      <div class="plans-head">
+        <span class="eyebrow">Planes y precios</span>
+        <h1>Interactuar y descubrir es gratis. Cotizar y crecer, un paso más allá.</h1>
+        <p>Cualquiera puede ver la actividad, el directorio y las publicaciones de la red. Para hablar con un proveedor hace falta estar registrado — y desde ahí, cada perfil elige cuánto quiere invertir en crecer dentro de TradeX.</p>
+      </div>
+
+      <div class="plan-audience">
+        <div class="auth-tabs" id="planAudienceTabs">
+          <button data-plan-tab="empresas" aria-selected="true">Para empresas</button>
+          <button data-plan-tab="proveedores" aria-selected="false">Para proveedores</button>
+        </div>
+      </div>
+
+      <!-- EMPRESAS -->
+      <div class="pricing-grid" data-plan-pane="empresas">
+        <div class="card plan-card" data-plan-card="empresa:gratis">
+          <div class="plan-name">Gratis</div>
+          <div class="plan-desc">Para descubrir la red y crear tu perfil.</div>
+          <div class="plan-price"><b>$0</b><span>/ siempre</span></div>
+          <ul class="plan-features">
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Ver toda la actividad y el directorio completo</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Comentar y reaccionar a publicaciones</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Crear tu perfil de empresa</li>
+            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Solicitar cotizaciones a proveedores</li>
+            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Ver datos de contacto del directorio</li>
+          </ul>
+          <button class="btn btn-outline btn-block" data-select-plan="empresa:gratis">Empezar gratis</button>
+        </div>
+
+        <div class="card plan-card featured" data-plan-card="empresa:pro">
+          <span class="plan-ribbon">Recomendado</span>
+          <div class="plan-name">Pro</div>
+          <div class="plan-desc">Para equipos de compras que cotizan seguido.</div>
+          <div class="plan-price"><b>USD 79</b><span>/ mes</span></div>
+          <ul class="plan-features">
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Todo lo del plan Gratis</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Cotizaciones (RFQ) ilimitadas a proveedores verificados</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Filtros avanzados por evidencia, rubro y ubicación</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Historial y seguimiento de tus RFQs</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Datos de contacto de empresas y proveedores del directorio</li>
+          </ul>
+          <button class="btn btn-accent btn-block" data-select-plan="empresa:pro">Empezar Pro</button>
+        </div>
+
+        <div class="card plan-card" data-plan-card="empresa:enterprise">
+          <div class="plan-name">Enterprise</div>
+          <div class="plan-desc">Para compras de gran escala o multi-proyecto.</div>
+          <div class="plan-price"><b>A medida</b></div>
+          <ul class="plan-features">
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Todo lo del plan Pro</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Panel de inteligencia de mercado (precios de referencia, demanda por rubro)</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>API para integrar cotizaciones a tu sistema de compras</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Matching asistido y gestor de cuenta dedicado</li>
+          </ul>
+          <button class="btn btn-outline btn-block" data-select-plan="empresa:enterprise">Hablar con ventas</button>
+        </div>
+      </div>
+
+      <!-- PROVEEDORES -->
+      <div class="pricing-grid" data-plan-pane="proveedores" hidden>
+        <div class="card plan-card" data-plan-card="proveedor:gratis">
+          <div class="plan-name">Gratis</div>
+          <div class="plan-desc">Para estar en el directorio y empezar a ser visto.</div>
+          <div class="plan-price"><b>$0</b><span>/ siempre</span></div>
+          <ul class="plan-features">
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Perfil básico en el directorio</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Publicar novedades en el feed</li>
+            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Recibir cotizaciones dentro de tu categoría</li>
+            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Prioridad en resultados de búsqueda</li>
+            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Ver datos de contacto del directorio</li>
+          </ul>
+          <button class="btn btn-outline btn-block" data-select-plan="proveedor:gratis">Crear mi perfil</button>
+        </div>
+
+        <div class="card plan-card featured" data-plan-card="proveedor:destacado">
+          <span class="plan-ribbon">Recomendado</span>
+          <div class="plan-name">Destacado</div>
+          <div class="plan-desc">Para aparecer primero cuando te buscan.</div>
+          <div class="plan-price"><b>USD 49</b><span>/ mes</span></div>
+          <ul class="plan-features">
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Todo lo del plan Gratis</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Primero en tu categoría y ubicación</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Badge de proveedor verificado</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Cotizaciones ilimitadas, sin tope mensual</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Datos de contacto de empresas y proveedores del directorio</li>
+          </ul>
+          <button class="btn btn-accent btn-block" data-select-plan="proveedor:destacado">Destacar mi perfil</button>
+        </div>
+
+        <div class="card plan-card" data-plan-card="proveedor:porcotizacion">
+          <div class="plan-name">Por cotización</div>
+          <div class="plan-desc">Sin suscripción: pagás solo por cada lead calificado.</div>
+          <div class="plan-price"><b>Variable</b></div>
+          <ul class="plan-features">
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Ideal para empezar sin costo fijo</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Pagás solo cuando una empresa te cotiza a vos</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Métricas de rendimiento de tu perfil</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Podés pasarte a Destacado cuando quieras</li>
+          </ul>
+          <button class="btn btn-outline btn-block" data-select-plan="proveedor:porcotizacion">Consultar tarifas</button>
+        </div>
+      </div>
+
+      <div class="revenue-head">
+        <h2>Otras formas en que crece TradeX</h2>
+        <p>Más allá de las suscripciones, así se financia el resto de la red.</p>
+      </div>
+      <div class="revenue-grid">
+        <div class="card card-pad revenue-card">
+          <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4Z"></path><path d="m9 12 2 2 4-4"></path></svg></div>
+          <span class="revenue-tag">Add-on</span>
+          <b>Verificación &amp; compliance</b>
+          <p>Validamos certificaciones y documentación legal de un proveedor para darle el badge verificado — pago, opcional, y valorado tanto por quien lo tiene como por quien filtra por él.</p>
+        </div>
+        <div class="card card-pad revenue-card">
+          <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11v2a2 2 0 0 0 2 2h1l3 5V4L6 9H5a2 2 0 0 0-2 2Z"></path><path d="M14 8a4 4 0 0 1 0 8"></path><path d="M17 5a8 8 0 0 1 0 14"></path></svg></div>
+          <span class="revenue-tag">Publicidad</span>
+          <b>Publicaciones patrocinadas</b>
+          <p>Proveedores y empresas pueden destacar una publicación en el feed para llegar a más de la red, marcada siempre como "Patrocinado".</p>
+        </div>
+        <div class="card card-pad revenue-card">
+          <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10"></path><path d="M12 20V4"></path><path d="M20 20v-7"></path></svg></div>
+          <span class="revenue-tag">Enterprise</span>
+          <b>Datos e inteligencia de mercado</b>
+          <p>Reportes agregados y anónimos de precios de referencia, tiempos de respuesta y demanda por rubro, vendidos como dashboard a empresas grandes.</p>
+        </div>
+        <div class="card card-pad revenue-card">
+          <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 6-5 6 5 6"></path><path d="m16 6 5 6-5 6"></path></svg></div>
+          <span class="revenue-tag">Enterprise</span>
+          <b>API &amp; integraciones</b>
+          <p>Acceso programático al directorio y a las cotizaciones para conectar TradeX con el sistema de compras de tu empresa.</p>
+        </div>
+        <div class="card card-pad revenue-card">
+          <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"></circle><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"></path><path d="m17 11 2 2 4-4"></path></svg></div>
+          <span class="revenue-tag">A medida</span>
+          <b>Matching asistido</b>
+          <p>Para requerimientos complejos, un especialista de TradeX arma a mano la shortlist de proveedores más adecuados.</p>
+        </div>
+        <div class="card card-pad revenue-card">
+          <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="4"></circle><circle cx="12" cy="12" r=".6" fill="currentColor"></circle></svg></div>
+          <span class="revenue-tag">Proveedores</span>
+          <b>Pago por cotización</b>
+          <p>Alternativa a la suscripción: el proveedor paga solo por cada solicitud de cotización calificada que recibe, sin costo fijo mensual.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a class="brand" href="#" data-nav="feed" style="text-decoration:none;">
+          <svg class="logo-mark" viewBox="0 0 40 40" width="28" height="28" aria-hidden="true">
+            <line x1="9" y1="9" x2="31" y2="31" stroke="var(--accent-strong)" stroke-width="7" stroke-linecap="round"></line>
+            <line x1="31" y1="9" x2="9" y2="31" stroke="var(--accent-2-strong)" stroke-width="7" stroke-linecap="round"></line>
+          </svg>
+          <span class="brand-word">TradeX</span>
+        </a>
+        <p>La red B2B donde proveedores y compradores construyen relaciones comerciales verificables — no solo contactos.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <b>Producto</b>
+          <a data-nav="feed">Inicio</a>
+          <a data-nav="directorio">Directorio</a>
+          <a data-nav="rfq">Oportunidades</a>
+          <a data-nav="planes">Planes y precios</a>
+          <a data-nav="mapa">Mapa de red</a>
+        </div>
+        <div class="footer-col">
+          <b>Empresa</b>
+          <a href="#">Sobre TradeX</a>
+          <a href="#">Confianza TradeX</a>
+          <a href="#">Contacto</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 TradeX. Todos los derechos reservados.</span>
+      <span>Ideado y desarrollado por Alejandro Bulacio Moreno &amp; Nicolás Wilke.</span>
+    </div>
+  </footer>
+
+  </div>
+
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
