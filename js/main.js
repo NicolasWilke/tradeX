@@ -5,7 +5,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, setDoc, updateDoc,
-  addDoc, onSnapshot, query, orderBy, limit, serverTimestamp
+  addDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 var firebaseConfig = {
@@ -31,6 +31,14 @@ var db = getFirestore(fbApp);
 
   var userPosts = [];
   var postsLoaded = false;
+
+  var postLikes = [];
+  var likesLoaded = false;
+  var postComments = [];
+  var commentsLoaded = false;
+  var openCommentsFor = {};
+  var commentDrafts = {};
+  var composerImageDataUrl = null; // resized/compressed data URL ready to store, or null
 
   var rfqs = [
     { id:1, title:"Empaque corrugado — 50,000 u/mes", buyer:"Grupo Alimenta", category:"Empaque corrugado", location:"León, GTO", budget:"$80–120k MXN", deadline:"15 nov", quotes:6, match:96 },
@@ -189,6 +197,46 @@ var db = getFirestore(fbApp);
     });
   }
 
+  function attachLikesListener(){
+    onSnapshot(collection(db, "postLikes"), function(snap){
+      postLikes = snap.docs.map(function(d){
+        var data = d.data();
+        data.id = d.id;
+        return data;
+      });
+      likesLoaded = true;
+      renderFeed();
+    }, function(err){
+      console.error("No se pudieron leer los Me gusta:", err);
+    });
+  }
+
+  function attachCommentsListener(){
+    var qy = query(collection(db, "postComments"), orderBy("createdAt", "asc"));
+    onSnapshot(qy, function(snap){
+      postComments = snap.docs.map(function(d){
+        var data = d.data();
+        data.id = d.id;
+        return data;
+      });
+      commentsLoaded = true;
+      renderFeed();
+    }, function(err){
+      console.error("No se pudieron leer los comentarios:", err);
+    });
+  }
+
+  function likesForPost(postId){
+    return postLikes.filter(function(l){ return l.postId === postId; });
+  }
+  function commentsForPost(postId){
+    return postComments.filter(function(c){ return c.postId === postId; });
+  }
+  function hasLiked(postId){
+    if(!currentUser) return false;
+    return postLikes.some(function(l){ return l.postId === postId && l.uid === currentUser.id; });
+  }
+
   function initialsOf(name){
     var words = name.trim().split(/\s+/).filter(Boolean);
     if(!words.length) return "EM";
@@ -265,6 +313,8 @@ var db = getFirestore(fbApp);
     switchView("feed");
     attachCompanyListener();
     attachPostsListener();
+    attachLikesListener();
+    attachCommentsListener();
     onAuthStateChanged(auth, function(user){
       if(user){
         authUid = user.uid;
@@ -715,15 +765,59 @@ var db = getFirestore(fbApp);
       '</div>';
       return;
     }
+    // Comment drafts live inside feedList, which we're about to rebuild from
+    // scratch — grab whatever the user was typing so we can put it back.
+    document.querySelectorAll('[data-comment-input]').forEach(function(inp){
+      commentDrafts[inp.getAttribute('data-comment-input')] = inp.value;
+    });
+
     var pieces = [];
     var adIdx = 0;
     userPosts.forEach(function(it, i){
-      pieces.push('<article class="card card-pad">'+
+      var likes = likesForPost(it.id);
+      var liked = hasLiked(it.id);
+      var comments = commentsForPost(it.id);
+      var commentsOpen = !!openCommentsFor[it.id];
+
+      var mediaHtml = it.imageDataUrl ? '<img class="post-media" src="'+it.imageDataUrl+'" alt="" loading="lazy" />' : "";
+
+      var commentsHtml = comments.map(function(c){
+        return '<div class="comment-item">'+
+          '<div class="avatar-sm">'+avatarContent(c)+'</div>'+
+          '<div class="comment-body"><b>'+esc(c.name)+'</b>'+esc(c.text)+'</div>'+
+        '</div>';
+      }).join('');
+
+      pieces.push('<article class="card card-pad" data-post-id="'+it.id+'">'+
         '<div class="post-head">'+
           '<div class="avatar-lg" style="width:42px;height:42px;border-radius:11px;border:0;font-size:.78rem;color:var(--ink);background:var(--accent-2)">'+avatarContent(it)+'</div>'+
           '<div><div class="post-name">'+esc(it.name)+'</div><div class="post-meta">'+esc(it.sector)+' · '+esc(formatPostTime(it.createdAt))+'</div></div>'+
         '</div>'+
-        '<p class="post-text">'+esc(it.text)+'</p>'+
+        (it.text ? '<p class="post-text">'+esc(it.text)+'</p>' : '')+
+        mediaHtml+
+        '<div class="post-actions">'+
+          '<button type="button" class="post-action-btn'+(liked ? ' is-active' : '')+'" data-like-post="'+it.id+'">'+
+            '<svg viewBox="0 0 24 24" width="16" height="16" fill="'+(liked ? 'currentColor' : 'none')+'" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"></path></svg>'+
+            (likes.length ? likes.length+' ' : '')+'Me gusta'+
+          '</button>'+
+          '<button type="button" class="post-action-btn" data-toggle-comments="'+it.id+'">'+
+            '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-8.9 8.4 9 9 0 0 1-3.6-.7L3 21l1.8-5.1A8.4 8.4 0 1 1 21 11.5Z"></path></svg>'+
+            (comments.length ? comments.length+' ' : '')+'Comentarios'+
+          '</button>'+
+        '</div>'+
+        (commentsOpen ? (
+          '<div class="post-comments">'+
+            (comments.length ? '<div class="comment-list">'+commentsHtml+'</div>' : '<p class="comment-empty">Sé el primero en comentar.</p>')+
+            (currentUser ? (
+              '<div class="comment-composer">'+
+                '<input type="text" placeholder="Escribí un comentario…" data-comment-input="'+it.id+'" maxlength="500" />'+
+                '<button type="button" class="btn btn-accent btn-sm" data-comment-submit="'+it.id+'">Comentar</button>'+
+              '</div>'
+            ) : (
+              '<p class="comment-empty"><button type="button" data-open-login-comments style="background:none;border:0;color:var(--accent-strong);font-weight:700;cursor:pointer;padding:0;font-size:inherit;">Iniciá sesión</button> para comentar.</p>'
+            ))+
+          '</div>'
+        ) : '')+
       '</article>');
       if((i+1) % 3 === 0){
         pieces.push(adCardHtml(ADS[adIdx % ADS.length]));
@@ -731,6 +825,11 @@ var db = getFirestore(fbApp);
       }
     });
     el.innerHTML = pieces.join('');
+
+    document.querySelectorAll('[data-comment-input]').forEach(function(inp){
+      var pid = inp.getAttribute('data-comment-input');
+      if(commentDrafts[pid]) inp.value = commentDrafts[pid];
+    });
   }
 
   /* ---------- render: directory ---------- */
@@ -1075,11 +1174,44 @@ var db = getFirestore(fbApp);
     if(!currentUser){ this.blur(); openAuthDropdown("login"); }
   });
 
+  /* ---------- composer: adjuntar foto ----------
+     Igual que la foto de perfil: se redimensiona/comprime en el navegador y
+     se guarda como texto (data URL) directo en el documento del posteo — no
+     depende de Firebase Storage ni de que el proyecto esté en plan Blaze. */
+  function clearComposerMediaPreview(){
+    composerImageDataUrl = null;
+    var wrap = document.getElementById("composerPreview");
+    wrap.innerHTML = "";
+    wrap.hidden = true;
+  }
+  document.getElementById("composerImageBtn").addEventListener("click", function(){
+    if(!currentUser){ openAuthDropdown("login"); return; }
+    document.getElementById("composerImageInput").click();
+  });
+  document.getElementById("composerImageInput").addEventListener("change", function(){
+    var file = this.files && this.files[0];
+    this.value = "";
+    if(!file) return;
+    if(!/^image\//.test(file.type)){ alert("Elegí un archivo de imagen."); return; }
+    resizeImageFile(file, 960).then(function(dataUrl){
+      composerImageDataUrl = dataUrl;
+      var wrap = document.getElementById("composerPreview");
+      wrap.innerHTML = '<img src="'+dataUrl+'" alt="" />'+
+        '<button type="button" class="composer-preview-remove" id="composerPreviewRemove" aria-label="Quitar foto">✕</button>';
+      wrap.hidden = false;
+    }).catch(function(err){
+      alert(err.message || "No se pudo procesar la imagen.");
+    });
+  });
+  document.getElementById("composerPreview").addEventListener("click", function(ev){
+    if(ev.target.closest("#composerPreviewRemove")) clearComposerMediaPreview();
+  });
+
   document.getElementById("publishPost").addEventListener('click', function(){
     if(!currentUser){ openAuthDropdown("login"); return; }
     var textEl = document.getElementById("composerText");
     var t = textEl.value.trim();
-    if(!t) return;
+    if(!t && !composerImageDataUrl) return;
     var btn = this;
     btn.disabled = true;
     addDoc(collection(db, "posts"), {
@@ -1089,14 +1221,90 @@ var db = getFirestore(fbApp);
       photoDataUrl: currentUser.photoDataUrl || null,
       sector: "Publicación propia",
       text: t,
+      imageDataUrl: composerImageDataUrl || null,
       createdAt: serverTimestamp()
     }).then(function(){
       textEl.value = "";
+      clearComposerMediaPreview();
     }).catch(function(err){
       alert("No se pudo publicar: " + err.message);
     }).finally(function(){
       btn.disabled = false;
     });
+  });
+
+  /* ---------- feed: me gusta y comentarios (delegado, los posteos se re-renderizan seguido) ---------- */
+  function toggleLike(postId, btnEl){
+    if(!currentUser) return;
+    var likeId = postId + "__" + currentUser.id;
+    var already = hasLiked(postId);
+    if(btnEl) btnEl.disabled = true;
+    var task = already
+      ? deleteDoc(doc(db, "postLikes", likeId))
+      : setDoc(doc(db, "postLikes", likeId), { postId: postId, uid: currentUser.id, createdAt: serverTimestamp() });
+    task.catch(function(err){
+      alert("No se pudo actualizar el Me gusta: " + err.message);
+    }).finally(function(){
+      if(btnEl) btnEl.disabled = false;
+    });
+  }
+
+  function submitComment(postId, btnEl){
+    if(!currentUser) return;
+    var input = document.querySelector('[data-comment-input="'+postId+'"]');
+    if(!input) return;
+    var text = input.value.trim();
+    if(!text) return;
+    if(btnEl) btnEl.disabled = true;
+    addDoc(collection(db, "postComments"), {
+      postId: postId,
+      authorId: currentUser.id,
+      name: currentUser.name,
+      initials: currentUser.initials,
+      photoDataUrl: currentUser.photoDataUrl || null,
+      text: text,
+      createdAt: serverTimestamp()
+    }).then(function(){
+      delete commentDrafts[postId];
+      if(input) input.value = "";
+    }).catch(function(err){
+      alert("No se pudo publicar el comentario: " + err.message);
+    }).finally(function(){
+      if(btnEl) btnEl.disabled = false;
+    });
+  }
+
+  document.getElementById("feedList").addEventListener("click", function(ev){
+    var likeBtn = ev.target.closest("[data-like-post]");
+    if(likeBtn){
+      if(!currentUser){ openAuthDropdown("login"); return; }
+      toggleLike(likeBtn.getAttribute("data-like-post"), likeBtn);
+      return;
+    }
+    var toggleBtn = ev.target.closest("[data-toggle-comments]");
+    if(toggleBtn){
+      var pid = toggleBtn.getAttribute("data-toggle-comments");
+      openCommentsFor[pid] = !openCommentsFor[pid];
+      renderFeed();
+      return;
+    }
+    var submitBtn = ev.target.closest("[data-comment-submit]");
+    if(submitBtn){
+      if(!currentUser){ openAuthDropdown("login"); return; }
+      submitComment(submitBtn.getAttribute("data-comment-submit"), submitBtn);
+      return;
+    }
+    if(ev.target.closest("[data-open-login-comments]")){
+      openAuthDropdown("login");
+    }
+  });
+  document.getElementById("feedList").addEventListener("keydown", function(ev){
+    if(ev.key === "Enter" && ev.target.matches && ev.target.matches('[data-comment-input]')){
+      ev.preventDefault();
+      var pid = ev.target.getAttribute('data-comment-input');
+      var btn = document.querySelector('[data-comment-submit="'+pid+'"]');
+      submitComment(pid, btn);
+    }
   });
 
   bootApp();

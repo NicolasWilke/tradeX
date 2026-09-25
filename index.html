@@ -216,10 +216,19 @@
         <div class="card card-pad composer">
           <div class="composer-row">
             <div class="avatar-lg" id="composerAvatar" style="width:40px;height:40px;border-radius:11px;border:0;font-size:.75rem;background:var(--surface-2);color:var(--ink-faint)">—</div>
-            <textarea id="composerText" placeholder="Comparte una novedad, disponibilidad o logro de tu empresa…" rows="1"></textarea>
+            <div style="flex:1 1 auto;min-width:0;">
+              <textarea id="composerText" placeholder="Comparte una novedad, disponibilidad o logro de tu empresa…" rows="1"></textarea>
+              <div class="composer-preview" id="composerPreview" hidden></div>
+            </div>
           </div>
           <div class="composer-foot">
-            <span style="font-size:.76rem;color:var(--ink-faint)" id="composerHint">Visible para toda tu red B2B</span>
+            <div class="composer-attach">
+              <input type="file" accept="image/*" id="composerImageInput" hidden />
+              <button type="button" class="icon-btn composer-attach-btn" id="composerImageBtn" title="Agregar foto" aria-label="Agregar foto">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><circle cx="8.5" cy="10" r="1.6"></circle><path d="m4 17 5-5 4 4 3-3 4 4"></path></svg>
+              </button>
+              <span style="font-size:.76rem;color:var(--ink-faint)" id="composerHint">Visible para toda tu red B2B</span>
+            </div>
             <button class="btn btn-accent btn-sm" id="publishPost">Publicar</button>
           </div>
         </div>
