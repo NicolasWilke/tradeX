@@ -1,0 +1,14 @@
+{
+  "name": "TradeX",
+  "short_name": "TradeX",
+  "description": "Red B2B de empresas y proveedores del sector industrial y energético.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#2B2640",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
