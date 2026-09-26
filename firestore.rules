@@ -29,10 +29,17 @@ service cloud.firestore {
                     && request.auth.uid == companyId
                     && request.resource.data.plan == "gratis"
                     && request.resource.data.verificada == false;
+      // Ojo con esta regla: usa .get(campo, valor_por_defecto) en vez de
+      // comparar el campo directo. Las empresas que se registraron ANTES de
+      // que existiera "verificada" (o incluso "plan", en las cuentas más
+      // viejas) no tienen ese campo en su documento — comparar un campo que
+      // no existe tira error de evaluación en las reglas, y eso se ve del
+      // lado del cliente como "Missing or insufficient permissions" al
+      // guardar cualquier cambio de perfil, aunque no toque ese campo.
       allow update: if request.auth != null
                     && request.auth.uid == companyId
-                    && request.resource.data.plan == resource.data.plan
-                    && request.resource.data.verificada == resource.data.verificada;
+                    && request.resource.data.get('plan', 'gratis') == resource.data.get('plan', 'gratis')
+                    && request.resource.data.get('verificada', false) == resource.data.get('verificada', false);
       allow delete: if false;
 
       // Datos de contacto (nombre, email, teléfono) de la empresa: viven

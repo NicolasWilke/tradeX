@@ -120,7 +120,15 @@ var db = getFirestore(fbApp);
   }
 
   function locationLine(c){
-    var pin = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12Z"></path><circle cx="12" cy="10" r="2.4"></circle></svg>';
+    // Ojo: el <svg> necesita width/height explícitos. Sin ellos, el
+    // navegador le da su tamaño intrínseco por defecto (bastante grande),
+    // y como este ícono suele ir dentro de un contenedor flex junto a otros
+    // ".tag", eso estira TODOS los tags de esa misma fila a su altura
+    // (comportamiento por defecto de align-items:stretch en flex) — se ve
+    // como si los demás tags se hubieran vuelto gigantes, aunque el bug es
+    // solo de este ícono.
+    var pin = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:0 0 auto;">'+
+      '<path d="M12 22s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12Z"></path><circle cx="12" cy="10" r="2.4"></circle></svg>';
     return pin + '<span>' + esc(c.ubicacion || "Ubicación no especificada") + '</span>';
   }
 
