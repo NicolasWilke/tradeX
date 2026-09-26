@@ -23,6 +23,52 @@ var db = getFirestore(fbApp);
 (function(){
   "use strict";
 
+  /* ---------- analítica y monitoreo de errores ----------
+     trackEvent()/trackPageView() mandan a Google Analytics (GA4) si el
+     snippet de gtag.js está cargado en el <head> (ver index.html) — si no
+     está configurado, gtag no existe y estas llamadas no hacen nada.
+     logClientError() manda un registro mínimo a Firestore (colección
+     "clientErrors"), que solo se puede escribir, nunca leer desde el
+     cliente — se revisa desde Firebase Console. No depende de ninguna
+     cuenta ni servicio nuevo, y no tiene costo con el volumen de una app
+     recién arrancando. */
+  function trackEvent(name, params){
+    try{
+      if(typeof window.gtag === "function") window.gtag('event', name, params || {});
+    }catch(e){ /* la analítica nunca debe romper la app */ }
+  }
+  function trackPageView(path, title){
+    try{
+      if(typeof window.gtag === "function") window.gtag('event', 'page_view', {page_path: path, page_title: title});
+    }catch(e){}
+  }
+  function logClientError(message, extra){
+    try{
+      var payload = {
+        message: String(message == null ? "Error sin mensaje" : message).slice(0, 480),
+        url: location.href,
+        userId: (typeof currentUser !== "undefined" && currentUser) ? currentUser.id : null,
+        userAgent: navigator.userAgent,
+        createdAt: serverTimestamp()
+      };
+      if(extra){ for(var k in extra){ if(Object.prototype.hasOwnProperty.call(extra,k)) payload[k] = extra[k]; } }
+      addDoc(collection(db, "clientErrors"), payload).catch(function(){ /* si falla el log, no insistimos */ });
+    }catch(e){ /* nunca dejar que el logging de errores tire otro error */ }
+  }
+  window.addEventListener("error", function(ev){
+    logClientError(ev.message, {
+      source: ev.filename || null, line: ev.lineno || null, col: ev.colno || null,
+      stack: (ev.error && ev.error.stack) ? String(ev.error.stack).slice(0,1000) : null
+    });
+  });
+  window.addEventListener("unhandledrejection", function(ev){
+    var reason = ev.reason;
+    logClientError(reason && reason.message ? reason.message : String(reason), {
+      kind: "unhandledrejection",
+      stack: (reason && reason.stack) ? String(reason.stack).slice(0,1000) : null
+    });
+  });
+
   var AVATAR_COLORS = ["var(--accent)","var(--accent-3)","#F7CBB4"];
 
   var companies = [];
@@ -540,6 +586,7 @@ var db = getFirestore(fbApp);
         formEl.reset();
         switchRegTab("empresa");
         openCompany(uid);
+        trackEvent('sign_up', {method:'email', account_type: accountType});
       });
     }).catch(function(err){
       errEl.textContent = firebaseErrorToSpanish(err);
@@ -589,6 +636,10 @@ var db = getFirestore(fbApp);
         // reglas de seguridad ahora impiden que el cliente se autoasigne
         // un plan pago escribiendo el campo "plan" directamente. Hasta que
         // exista un medio de pago, se activa a mano desde el equipo.
+        // Este evento queda registrado en Analytics: es la señal más barata
+        // que existe de "cuánta gente quiere pagar" antes de construir el
+        // cobro real — conviene mirarlo antes de meterse con Mercado Pago.
+        trackEvent('plan_interest_blocked', {plan: planKey});
         alert("Este plan todavía no se puede activar solo — estamos integrando el cobro. Escribinos y lo activamos nosotros mientras tanto.");
         return;
       }
@@ -1224,6 +1275,11 @@ var db = getFirestore(fbApp);
       b.setAttribute('aria-current', b.getAttribute('data-nav') === name ? "true" : "false");
     });
     window.scrollTo({top:0, behavior:"auto"});
+    // TradeX es una sola página real (no hay recarga entre secciones), así
+    // que GA4 no ve "pageviews" solo. Se avisan a mano acá para poder medir
+    // en qué sección se cae la gente (por ejemplo, cuántos llegan a "planes"
+    // pero nunca vuelven a "rfq").
+    trackPageView("/" + name, document.title + " · " + name);
   }
 
   document.querySelectorAll('[data-nav]').forEach(function(el){
@@ -1263,6 +1319,7 @@ var db = getFirestore(fbApp);
       buyerId: currentUser.id, buyerName: currentUser.name || "Empresa de la red",
       quotes: 0, createdAt: serverTimestamp()
     }).then(function(){
+      trackEvent('generate_lead', {event_category:'rfq', rfq_category: categoria});
       ["fTitulo","fCategoria","fUbicacion","fEntrega","fPresupuesto"].forEach(function(id){ document.getElementById(id).value=""; });
       document.getElementById("rfqForm").hidden = true;
     }).catch(function(err){

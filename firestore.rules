@@ -1,0 +1,102 @@
+rules_version = '2';
+
+// Reglas de seguridad para TradeX (Firestore)
+// Pegar este contenido en: Firebase Console -> Firestore Database -> Reglas
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Directorio de empresas: público para leer (así funciona el directorio
+    // sin necesidad de estar logueado), pero cada empresa solo puede crear
+    // o modificar SU PROPIO documento (el id del documento = su uid de Auth).
+    //
+    // El campo "plan" NO se puede escribir libremente desde el cliente:
+    // solo puede crearse en "gratis", y ninguna actualización puede cambiarlo.
+    // Hasta que exista una integración de pagos real (Mercado Pago + una
+    // Cloud Function que valide el cobro y recién ahí actualice este campo
+    // con permisos de administrador), "plan" queda congelado en "gratis"
+    // para todo el mundo. Esto es lo que evita que cualquiera se autoasigne
+    // un plan pago haciendo updateDoc desde la consola del navegador.
+    match /companies/{companyId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.auth.uid == companyId
+                    && request.resource.data.plan == "gratis";
+      allow update: if request.auth != null
+                    && request.auth.uid == companyId
+                    && request.resource.data.plan == resource.data.plan;
+      allow delete: if false;
+
+      // Datos de contacto (nombre, email, teléfono) de la empresa: viven
+      // separados del documento público para que puedan protegerse de
+      // verdad. Solo la propia empresa puede leer y escribir su contacto;
+      // otra empresa recién podrá leerlo cuando tenga un plan pago real
+      // (por ahora eso no puede pasar, porque "plan" está congelado en
+      // "gratis" — ver el comentario de arriba).
+      match /private/contact {
+        allow read: if request.auth != null
+                    && (request.auth.uid == companyId
+                        || get(/databases/$(database)/documents/companies/$(request.auth.uid)).data.plan != "gratis");
+        allow write: if request.auth != null && request.auth.uid == companyId;
+      }
+    }
+
+    // Feed de publicaciones: público para leer, pero solo un usuario logueado
+    // puede publicar, y únicamente a nombre de sí mismo (authorId == su uid).
+    // No se permite editar ni borrar posteos desde el cliente.
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Me gusta: un documento por combinación posteo+usuario, con el id
+    // "<postId>__<uid>" — así Firestore mismo evita que alguien tenga más
+    // de un Me gusta en el mismo posteo. Cada usuario solo puede crear/borrar
+    // el suyo propio.
+    match /postLikes/{likeId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && likeId == request.resource.data.postId + '__' + request.auth.uid;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow update: if false;
+    }
+
+    // Comentarios: público para leer, solo un usuario logueado puede
+    // comentar y únicamente a nombre de sí mismo. No se permite editar
+    // ni borrar comentarios desde el cliente.
+    match /postComments/{commentId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Requerimientos (RFQs): público para leer (así se ven las
+    // "Oportunidades" sin estar logueado), solo un usuario logueado puede
+    // publicar uno y únicamente a nombre de sí mismo (buyerId == su uid).
+    // No se permite editar ni borrar desde el cliente.
+    match /rfqs/{rfqId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.buyerId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Registro de errores del cliente (monitoreo básico, sin Sentry ni
+    // servicios de pago): cualquiera puede crear un registro (incluso sin
+    // loguearse, para capturar errores en pantallas públicas), pero nadie
+    // puede leerlos, editarlos ni borrarlos desde el cliente — solo se ven
+    // desde Firebase Console, que no pasa por estas reglas. Se valida que
+    // el mensaje no sea gigante y que la fecha la ponga el servidor, para
+    // limitar el abuso de una colección de escritura abierta.
+    match /clientErrors/{errorId} {
+      allow read, update, delete: if false;
+      allow create: if request.resource.data.message is string
+                    && request.resource.data.message.size() < 500
+                    && request.resource.data.createdAt == request.time;
+    }
+  }
+}
