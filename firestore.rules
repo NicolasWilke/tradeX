@@ -17,14 +17,22 @@ service cloud.firestore {
     // con permisos de administrador), "plan" queda congelado en "gratis"
     // para todo el mundo. Esto es lo que evita que cualquiera se autoasigne
     // un plan pago haciendo updateDoc desde la consola del navegador.
+    //
+    // El campo "verificada" funciona igual: nace en false y queda congelado
+    // contra el cliente. El equipo de TradeX lo pone en true a mano, desde
+    // Firebase Console, después de revisar la documentación de la empresa
+    // (constancia de CUIT/inscripción) — es un proceso manual, no automático,
+    // así que ninguna empresa puede autoverificarse haciendo updateDoc.
     match /companies/{companyId} {
       allow read: if true;
       allow create: if request.auth != null
                     && request.auth.uid == companyId
-                    && request.resource.data.plan == "gratis";
+                    && request.resource.data.plan == "gratis"
+                    && request.resource.data.verificada == false;
       allow update: if request.auth != null
                     && request.auth.uid == companyId
-                    && request.resource.data.plan == resource.data.plan;
+                    && request.resource.data.plan == resource.data.plan
+                    && request.resource.data.verificada == resource.data.verificada;
       allow delete: if false;
 
       // Datos de contacto (nombre, email, teléfono) de la empresa: viven

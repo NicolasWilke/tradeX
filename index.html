@@ -16,14 +16,15 @@
 <!-- Google Analytics (GA4). Reemplazá G-XXXXXXXXXX por tu Measurement ID real:
      Google Analytics -> Administrar -> Flujos de datos -> tu flujo web.
      Con el ID de ejemplo, gtag existe pero no manda nada a ninguna cuenta real. -->
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-5FC2CL7WHL"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
+  function gtag(){ dataLayer.push(arguments); }
   gtag('js', new Date());
-
-  gtag('config', 'G-5FC2CL7WHL');
+  // send_page_view en false: TradeX es una sola página y el propio código
+  // (switchView) manda un page_view manual cada vez que cambiás de sección,
+  // así las vistas dentro de la app también quedan medidas.
+  gtag('config', 'G-5FC2CL7WHL', { send_page_view: false });
 </script>
 </head>
 <body>
@@ -108,6 +109,7 @@
             </div>
             <div class="field"><label>Sector</label><input type="text" id="editSector" required /></div>
           </div>
+          <div class="field" style="margin-top:12px;"><label>Ubicación</label><input type="text" id="editUbicacion" placeholder="Ej: Neuquén, Argentina" required /></div>
           <div class="field" style="margin-top:12px;">
             <label>Descripción</label>
             <textarea id="editDescripcion" rows="3" placeholder="Contales a las demás empresas a qué se dedica tu empresa…"></textarea>
@@ -163,6 +165,7 @@
               </div>
               <div class="field"><label>Sector</label><input type="text" id="regSector" placeholder="Ej: Servicios industriales" required /></div>
             </div>
+            <div class="field" style="margin-top:12px;"><label>Ubicación</label><input type="text" id="regUbicacion" placeholder="Ej: Neuquén, Argentina" required /></div>
             <div class="field" style="margin-top:12px;"><label>Contraseña</label><input type="password" id="regPassword" placeholder="••••••••" required minlength="6" /><div class="field-hint">Mínimo 6 caracteres.</div></div>
             <div class="field" style="margin-top:12px;">
               <label>Fuente pública (opcional)</label>

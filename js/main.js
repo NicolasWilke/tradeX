@@ -109,6 +109,21 @@ var db = getFirestore(fbApp);
     return '<span class="tag" style="color:var(--accent-3-strong);">Autodeclarado por la empresa</span>';
   }
 
+  // El badge "Verificada" solo lo activa el equipo de TradeX a mano desde
+  // Firebase Console (campo "verificada", congelado contra el cliente en
+  // firestore.rules) — no hay ninguna acción del lado del cliente que lo
+  // prenda. Ver el proceso manual en la documentación del proyecto.
+  function verifiedBadge(c){
+    if(!c || !c.verificada) return '';
+    return '<span class="tag" style="display:inline-flex;align-items:center;gap:6px;background:color-mix(in srgb, var(--accent-2) 45%, white);color:var(--ink);font-weight:800;">'+
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"></path></svg>Verificada por TradeX</span>';
+  }
+
+  function locationLine(c){
+    var pin = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12Z"></path><circle cx="12" cy="10" r="2.4"></circle></svg>';
+    return pin + '<span>' + esc(c.ubicacion || "Ubicación no especificada") + '</span>';
+  }
+
   function fuenteLink(url, label){
     return '<a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:6px;color:var(--accent-strong);font-size:.8rem;font-weight:700;text-decoration:none;">'+
       esc(label || 'Ver fuente pública')+
@@ -533,13 +548,14 @@ var db = getFirestore(fbApp);
     var telefono = document.getElementById("regTelefono").value.trim();
     var vinculo = document.getElementById("regVinculo").value;
     var sector = document.getElementById("regSector").value.trim();
+    var ubicacion = document.getElementById("regUbicacion").value.trim();
     var fuente = document.getElementById("regFuente").value.trim();
     var password = document.getElementById("regPassword").value;
     var errEl = document.getElementById("regError");
     var accountTypeBtn = document.querySelector("#regAudienceTabs [data-reg-tab][aria-selected='true']");
     var accountType = accountTypeBtn ? accountTypeBtn.getAttribute("data-reg-tab") : "empresa";
 
-    if(!empresa || !contactoNombre || !email || !telefono || !vinculo || !sector || !password){
+    if(!empresa || !contactoNombre || !email || !telefono || !vinculo || !sector || !ubicacion || !password){
       errEl.textContent = "Completá todos los campos para crear el perfil.";
       errEl.hidden = false;
       return;
@@ -561,10 +577,14 @@ var db = getFirestore(fbApp);
       // protegido por reglas de seguridad — así no queda legible por
       // cualquiera que consulte la colección pública.
       var record = {
-        name: empresa, vinculo: vinculo, sector: sector,
+        name: empresa, vinculo: vinculo, sector: sector, ubicacion: ubicacion,
         descripcion: "", evidencia: fuente ? "Media-Alta" : "Media",
         periodo: "", fuente: fuente, initials: initialsOf(empresa),
         color: companies.length % 3, selfRegistered: true, accountType: accountType, plan: "gratis",
+        // "verificada" arranca en false y queda congelado contra el cliente
+        // (ver firestore.rules): solo se pone en true a mano desde Firebase
+        // Console, después de un chequeo manual de la empresa.
+        verificada: false,
         createdAt: serverTimestamp()
       };
       var contactRecord = { nombre: contactoNombre, email: email, telefono: telefono };
@@ -727,6 +747,7 @@ var db = getFirestore(fbApp);
     var accountType = currentUser.accountType || "empresa";
     populateSelectOptions(document.getElementById("editVinculo"), REG_CATEGORIES[accountType] || REG_CATEGORIES.empresa, currentUser.vinculo);
     document.getElementById("editSector").value = currentUser.sector || "";
+    document.getElementById("editUbicacion").value = currentUser.ubicacion || "";
     document.getElementById("editDescripcion").value = currentUser.descripcion || "";
     document.getElementById("editFuente").value = currentUser.fuente || "";
     setEditPhotoPreview(currentUser.photoDataUrl, currentUser.initials);
@@ -778,11 +799,12 @@ var db = getFirestore(fbApp);
     var telefono = document.getElementById("editTelefono").value.trim();
     var vinculo = document.getElementById("editVinculo").value;
     var sector = document.getElementById("editSector").value.trim();
+    var ubicacion = document.getElementById("editUbicacion").value.trim();
     var descripcion = document.getElementById("editDescripcion").value.trim();
     var fuente = document.getElementById("editFuente").value.trim();
     var errEl = document.getElementById("editProfileError");
 
-    if(!empresa || !contactoNombre || !contactoEmail || !telefono || !vinculo || !sector){
+    if(!empresa || !contactoNombre || !contactoEmail || !telefono || !vinculo || !sector || !ubicacion){
       errEl.textContent = "Completá todos los campos obligatorios.";
       errEl.hidden = false;
       return;
@@ -796,7 +818,7 @@ var db = getFirestore(fbApp);
     // el documento público de la empresa — ver el comentario en el registro.
     var update = {
       name: empresa, initials: initialsOf(empresa),
-      vinculo: vinculo, sector: sector, descripcion: descripcion, fuente: fuente
+      vinculo: vinculo, sector: sector, ubicacion: ubicacion, descripcion: descripcion, fuente: fuente
     };
     if(pendingPhotoDataUrl !== undefined){
       update.photoDataUrl = pendingPhotoDataUrl;
@@ -953,7 +975,7 @@ var db = getFirestore(fbApp);
     var q = (document.getElementById("globalSearch").value || "").toLowerCase().trim();
     var list = companies.filter(function(c){
       var matchesCat = activeCategory === "Todos" || vinculoGroup(c) === activeCategory;
-      var matchesQ = !q || (c.name+" "+c.sector+" "+c.vinculo).toLowerCase().indexOf(q) !== -1;
+      var matchesQ = !q || (c.name+" "+c.sector+" "+c.vinculo+" "+(c.ubicacion||"")).toLowerCase().indexOf(q) !== -1;
       return matchesCat && matchesQ;
     });
     var el = document.getElementById("companyGrid");
@@ -970,11 +992,11 @@ var db = getFirestore(fbApp);
           '<div class="avatar-lg" style="width:44px;height:44px;border-radius:12px;border:0;font-size:.8rem;color:var(--ink);background:'+AVATAR_COLORS[c.color]+'">'+avatarContent(c)+'</div>'+
           '<div style="min-width:0;">'+
             '<div style="font-weight:800;font-size:.92rem;">'+esc(c.name)+'</div>'+
-            '<div class="cat">'+esc(c.vinculo)+'</div>'+
-            '<div class="loc">'+esc(c.sector)+'</div>'+
+            '<div class="cat">'+esc(c.vinculo)+' · '+esc(c.sector)+'</div>'+
+            '<div class="loc">'+locationLine(c)+'</div>'+
           '</div>'+
         '</div>'+
-        '<div class="certs">'+evidenceBadge(c.evidencia)+selfTag(c)+'</div>'+
+        '<div class="certs">'+verifiedBadge(c)+evidenceBadge(c.evidencia)+selfTag(c)+'</div>'+
         '<div class="footline"><span style="font-size:.72rem;color:var(--ink-faint);">'+(c.fuente? 'Fuente pública citada' : 'Sin fuente pública')+'</span><span style="font-size:.72rem;color:var(--accent-strong);font-weight:700;">Ver ficha →</span></div>'+
       '</button>';
     }).join('');
@@ -1191,7 +1213,8 @@ var db = getFirestore(fbApp);
       about: '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">'+
           '<span class="tag">'+esc(c.vinculo)+'</span>'+
           '<span class="tag">'+esc(c.sector)+'</span>'+
-          evidenceBadge(c.evidencia)+selfTag(c)+
+          '<span class="tag" style="display:inline-flex;align-items:center;gap:6px;">'+locationLine(c)+'</span>'+
+          verifiedBadge(c)+evidenceBadge(c.evidencia)+selfTag(c)+
         '</div>'+
         (c.descripcion ? '<p style="font-size:.95rem;line-height:1.6;color:var(--ink);max-width:70ch;">'+esc(c.descripcion)+'</p>' : ''),
       contacto: contactPaneHtml(c),
@@ -1214,9 +1237,9 @@ var db = getFirestore(fbApp);
       '<div class="detail-cover"></div>'+
       '<div class="detail-head">'+
         '<div class="avatar-xl" style="background:'+AVATAR_COLORS[c.color]+'">'+avatarContent(c)+'</div>'+
-        '<div class="detail-info"><h2>'+esc(c.name)+'</h2><p style="color:var(--ink-soft);font-size:.88rem;margin-top:2px;">'+esc(c.sector)+' · '+esc(c.vinculo)+'</p></div>'+
+        '<div class="detail-info"><h2>'+esc(c.name)+'</h2><p style="color:var(--ink-soft);font-size:.88rem;margin-top:2px;">'+esc(c.sector)+' · '+esc(c.vinculo)+' · '+esc(c.ubicacion || "Ubicación no especificada")+'</p></div>'+
         (isOwnProfile ? '<button type="button" class="btn btn-outline btn-sm" id="detailEditProfileBtn">Editar perfil</button>' : '')+
-        evidenceBadge(c.evidencia)+
+        verifiedBadge(c)+evidenceBadge(c.evidencia)+
       '</div>'+
       '<div class="detail-tabs" id="detailTabs">'+tabs.map(function(t){ return '<button data-tab="'+t.key+'" aria-selected="'+(t.key===activeTab)+'">'+t.label+'</button>'; }).join('')+'</div>'+
       tabs.map(function(t){ return '<div class="detail-pane" data-pane="'+t.key+'" '+(t.key===activeTab?'':'hidden')+'>'+panes[t.key]+'</div>'; }).join('');
