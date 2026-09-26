@@ -40,12 +40,13 @@ var db = getFirestore(fbApp);
   var commentDrafts = {};
   var composerImageDataUrl = null; // resized/compressed data URL ready to store, or null
 
-  var rfqs = [
-    { id:1, title:"Empaque corrugado — 50,000 u/mes", buyer:"Grupo Alimenta", category:"Empaque corrugado", location:"León, GTO", budget:"$80–120k MXN", deadline:"15 nov", quotes:6, match:96 },
-    { id:2, title:"Transporte refrigerado ruta CDMX–Monterrey", buyer:"Distribuidora Rialto", category:"Logística", location:"CDMX", budget:"$45–60k MXN/mes", deadline:"30 oct", quotes:4, match:88 },
-    { id:3, title:"Insumos químicos grado alimenticio", buyer:"Lácteos del Centro", category:"Químicos", location:"Querétaro, QRO", budget:"$200k MXN", deadline:"5 dic", quotes:9, match:81 },
-    { id:4, title:"Componentes metálicos troquelados", buyer:"AutoParts Saltillo", category:"Metalmecánica", location:"Saltillo, COAH", budget:"$150–300k MXN", deadline:"20 nov", quotes:5, match:74 }
-  ];
+  // Los RFQs se guardan en Firestore (colección "rfqs") y se cargan acá
+  // mediante attachRfqsListener() — ver más abajo. Antes eran datos de
+  // ejemplo en memoria (con ubicaciones y montos en pesos mexicanos, que
+  // ni siquiera correspondían a esta red argentina) y se perdían al
+  // recargar la página.
+  var rfqs = [];
+  var rfqsLoaded = false;
 
   function esc(s){ var d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
   function uniq(a){ return a.filter(function(v,i){ return a.indexOf(v)===i; }); }
@@ -82,26 +83,35 @@ var db = getFirestore(fbApp);
     try{ return new URL(c.fuente).hostname.replace(/^www\./,""); }
     catch(e){ return null; }
   }
-  function contactFor(c){
-    if(c.contactoNombre || c.contactoEmail || c.contactoTelefono){
-      return {
-        nombre: c.contactoNombre || null,
-        email: c.contactoEmail || null,
-        telefono: c.contactoTelefono || null,
-        verified: true
-      };
-    }
-    var domain = domainFor(c);
-    if(!domain) return null;
-    return { email: "contacto@"+domain, domain: domain };
-  }
   function hasContactAccess(){
     return !!(currentUser && currentUser.plan && currentUser.plan !== "gratis");
+  }
+  // Además del plan pago, el dueño de una ficha siempre puede ver su propio
+  // contacto (coincide con lo que permiten las reglas de seguridad).
+  function canViewContact(c){
+    return hasContactAccess() || !!(currentUser && c && currentUser.id === c.id);
   }
 
   /* ---------- account / auth ---------- */
   var currentUser = null;
   var authUid = null;
+  // Nombre/email/teléfono de contacto de la empresa logueada. Vive en un
+  // documento separado (companies/{uid}/private/contact) protegido por
+  // las reglas de seguridad, no en el documento público de "companies" —
+  // así el contacto de cada empresa no queda legible por cualquiera.
+  // Se carga con loadCurrentUserContact() cada vez que cambia el usuario.
+  var currentUserContact = null;
+  var currentUserContactUid = null;
+  function loadCurrentUserContact(uid){
+    if(currentUserContactUid === uid) return;
+    currentUserContactUid = uid;
+    getDoc(doc(db, "companies", uid, "private", "contact")).then(function(snap){
+      if(currentUserContactUid !== uid) return; // el usuario cambió mientras tanto
+      currentUserContact = snap.exists() ? snap.data() : null;
+    }).catch(function(err){
+      console.error("No se pudo leer el contacto de la cuenta:", err);
+    });
+  }
 
   function firebaseErrorToSpanish(err){
     var code = err && err.code;
@@ -119,6 +129,7 @@ var db = getFirestore(fbApp);
   }
 
   function setCurrentUserFromUid(uid){
+    loadCurrentUserContact(uid);
     if(companyById[uid]){
       currentUser = companyById[uid];
       refreshAuthUI();
@@ -167,6 +178,7 @@ var db = getFirestore(fbApp);
       renderNetworkMap();
       if(authUid && companyById[authUid]){
         currentUser = companyById[authUid];
+        loadCurrentUserContact(authUid);
         refreshAuthUI();
         renderPlanButtons();
       }
@@ -194,6 +206,21 @@ var db = getFirestore(fbApp);
       renderFeed();
     }, function(err){
       console.error("No se pudo leer el feed:", err);
+    });
+  }
+
+  function attachRfqsListener(){
+    var qy = query(collection(db, "rfqs"), orderBy("createdAt", "desc"), limit(50));
+    onSnapshot(qy, function(snap){
+      rfqs = snap.docs.map(function(d){
+        var data = d.data();
+        data.id = d.id;
+        return data;
+      });
+      rfqsLoaded = true;
+      renderRfq();
+    }, function(err){
+      console.error("No se pudieron leer los RFQs:", err);
     });
   }
 
@@ -313,6 +340,7 @@ var db = getFirestore(fbApp);
     switchView("feed");
     attachCompanyListener();
     attachPostsListener();
+    attachRfqsListener();
     attachLikesListener();
     attachCommentsListener();
     onAuthStateChanged(auth, function(user){
@@ -482,19 +510,27 @@ var db = getFirestore(fbApp);
 
     createUserWithEmailAndPassword(auth, email, password).then(function(cred){
       var uid = cred.user.uid;
+      // El contacto (nombre/email/teléfono) NO va en el documento público
+      // de "companies": vive aparte, en companies/{uid}/private/contact,
+      // protegido por reglas de seguridad — así no queda legible por
+      // cualquiera que consulte la colección pública.
       var record = {
         name: empresa, vinculo: vinculo, sector: sector,
         descripcion: "", evidencia: fuente ? "Media-Alta" : "Media",
         periodo: "", fuente: fuente, initials: initialsOf(empresa),
         color: companies.length % 3, selfRegistered: true, accountType: accountType, plan: "gratis",
-        contactoNombre: contactoNombre, contactoEmail: email, contactoTelefono: telefono,
         createdAt: serverTimestamp()
       };
+      var contactRecord = { nombre: contactoNombre, email: email, telefono: telefono };
       return setDoc(doc(db, "companies", uid), record).then(function(){
+        return setDoc(doc(db, "companies", uid, "private", "contact"), contactRecord);
+      }).then(function(){
         record.id = uid;
         companyById[uid] = record;
         companies.unshift(record);
         currentUser = record;
+        currentUserContact = contactRecord;
+        currentUserContactUid = uid;
         refreshAuthUI();
         renderPlanButtons();
         renderCategoryFilters();
@@ -547,6 +583,15 @@ var db = getFirestore(fbApp);
         return;
       }
       var planKey = btn.getAttribute("data-select-plan").split(":")[1];
+      if(planKey !== "gratis"){
+        // Los planes pagos todavía no tienen un cobro real detrás (no hay
+        // integración de pagos ni Cloud Function que valide nada), y las
+        // reglas de seguridad ahora impiden que el cliente se autoasigne
+        // un plan pago escribiendo el campo "plan" directamente. Hasta que
+        // exista un medio de pago, se activa a mano desde el equipo.
+        alert("Este plan todavía no se puede activar solo — estamos integrando el cobro. Escribinos y lo activamos nosotros mientras tanto.");
+        return;
+      }
       btn.disabled = true;
       updateDoc(doc(db, "companies", currentUser.id), {plan: planKey}).catch(function(err){
         alert("No se pudo actualizar el plan: " + err.message);
@@ -625,9 +670,9 @@ var db = getFirestore(fbApp);
     closeAuthDropdown();
     pendingPhotoDataUrl = undefined;
     document.getElementById("editEmpresa").value = currentUser.name || "";
-    document.getElementById("editContactoNombre").value = currentUser.contactoNombre || "";
-    document.getElementById("editContactoEmail").value = currentUser.contactoEmail || "";
-    document.getElementById("editTelefono").value = currentUser.contactoTelefono || "";
+    document.getElementById("editContactoNombre").value = (currentUserContact && currentUserContact.nombre) || "";
+    document.getElementById("editContactoEmail").value = (currentUserContact && currentUserContact.email) || "";
+    document.getElementById("editTelefono").value = (currentUserContact && currentUserContact.telefono) || "";
     var accountType = currentUser.accountType || "empresa";
     populateSelectOptions(document.getElementById("editVinculo"), REG_CATEGORIES[accountType] || REG_CATEGORIES.empresa, currentUser.vinculo);
     document.getElementById("editSector").value = currentUser.sector || "";
@@ -696,20 +741,26 @@ var db = getFirestore(fbApp);
     submitBtn.disabled = true;
     submitBtn.textContent = "Guardando…";
 
+    // El contacto se guarda aparte (companies/{id}/private/contact), no en
+    // el documento público de la empresa — ver el comentario en el registro.
     var update = {
       name: empresa, initials: initialsOf(empresa),
-      contactoNombre: contactoNombre, contactoEmail: contactoEmail, contactoTelefono: telefono,
       vinculo: vinculo, sector: sector, descripcion: descripcion, fuente: fuente
     };
     if(pendingPhotoDataUrl !== undefined){
       update.photoDataUrl = pendingPhotoDataUrl;
     }
+    var contactUpdate = { nombre: contactoNombre, email: contactoEmail, telefono: telefono };
 
-    updateDoc(doc(db, "companies", currentUser.id), update).then(function(){
+    Promise.all([
+      updateDoc(doc(db, "companies", currentUser.id), update),
+      setDoc(doc(db, "companies", currentUser.id, "private", "contact"), contactUpdate)
+    ]).then(function(){
       var merged = {};
       for(var k in currentUser){ if(Object.prototype.hasOwnProperty.call(currentUser,k)) merged[k] = currentUser[k]; }
       for(var k2 in update){ if(Object.prototype.hasOwnProperty.call(update,k2)) merged[k2] = update[k2]; }
       currentUser = merged;
+      currentUserContact = contactUpdate;
       companyById[currentUser.id] = merged;
       for(var i=0;i<companies.length;i++){
         if(companies[i].id === currentUser.id){ companies[i] = merged; break; }
@@ -956,19 +1007,26 @@ var db = getFirestore(fbApp);
   /* ---------- render: rfq ---------- */
   function renderRfq(){
     var el = document.getElementById("rfqList");
+    if(!rfqsLoaded){
+      el.innerHTML = '<p style="font-size:.85rem;color:var(--ink-faint);">Cargando oportunidades…</p>';
+      return;
+    }
+    if(!rfqs.length){
+      el.innerHTML = '<div class="card card-pad" style="box-shadow:none;"><p style="font-size:.85rem;color:var(--ink-faint);">Todavía no hay requerimientos publicados. Sé el primero en publicar uno.</p></div>';
+      return;
+    }
     el.innerHTML = rfqs.map(function(r){
       return '<article class="card card-pad rfq-card">'+
         '<div class="top">'+
-          '<div><h3>'+esc(r.title)+'</h3><div class="buyer">'+esc(r.buyer)+' · '+esc(r.location)+'</div></div>'+
-          '<span class="match-pill"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"></path></svg>'+r.match+'% match</span>'+
+          '<div><h3>'+esc(r.title)+'</h3><div class="buyer">'+esc(r.buyerName || "Empresa de la red")+' · '+esc(r.location || "—")+'</div></div>'+
         '</div>'+
         '<div class="rfq-meta">'+
           '<div><span>Categoría</span><b style="font-family:var(--font-body);font-weight:700;">'+esc(r.category)+'</b></div>'+
           '<div><span>Presupuesto</span><b>'+esc(r.budget)+'</b></div>'+
           '<div><span>Entrega</span><b>'+esc(r.deadline)+'</b></div>'+
-          '<div><span>Cotizaciones</span><b>'+r.quotes+'</b></div>'+
+          '<div><span>Cotizaciones</span><b>'+(r.quotes||0)+'</b></div>'+
         '</div>'+
-        '<div class="rfq-foot"><span style="font-size:.76rem;color:var(--ink-faint);">Publicado por un comprador verificado</span><button class="btn btn-accent btn-sm">Cotizar ahora</button></div>'+
+        '<div class="rfq-foot"><span style="font-size:.76rem;color:var(--ink-faint);">'+esc(formatPostTime(r.createdAt))+'</span><button class="btn btn-accent btn-sm" disabled title="Próximamente">Cotizar ahora</button></div>'+
       '</article>';
     }).join('');
   }
@@ -985,39 +1043,19 @@ var db = getFirestore(fbApp);
     var pane = document.querySelector('[data-pane="contacto"]');
     if(!pane) return;
     pane.innerHTML = contactPaneHtml(c);
-    pane.querySelectorAll('[data-open-planes]').forEach(function(b){
-      b.addEventListener('click', function(){ switchView('planes'); });
-    });
-    pane.querySelectorAll('[data-open-login]').forEach(function(b){
-      b.addEventListener('click', function(){ openAuthDropdown('login'); });
-    });
+    bindContactPaneButtons(pane);
+    renderContactPaneDetails(pane, c);
   }
+  // contactPaneHtml() es SINCRÓNICA y solo decide si el usuario tiene
+  // acceso o no (la "puerta"): el dato de contacto en sí ya no vive en el
+  // objeto de la empresa (quedó protegido en companies/{id}/private/contact,
+  // ver las reglas de seguridad), así que cuando hay acceso se pide con
+  // getDoc() en renderContactPaneDetails() y se completa la ficha cuando
+  // llega la respuesta.
   function contactPaneHtml(c){
-    if(hasContactAccess()){
-      var info = contactFor(c);
-      if(!info){
-        return '<div class="card card-pad" style="box-shadow:none;max-width:60ch;">'+
-          '<p style="font-size:.85rem;color:var(--ink-faint);">Esta ficha todavía no tiene un dominio público del que inferir un contacto.</p>'+
-        '</div>';
-      }
-      if(info.verified){
-        return '<div class="card card-pad" style="box-shadow:none;max-width:60ch;">'+
-          '<div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);font-weight:800;margin-bottom:8px;">Contacto</div>'+
-          (info.nombre ? '<p style="font-size:.9rem;color:var(--ink);margin-bottom:6px;"><b>Nombre:</b> '+esc(info.nombre)+'</p>' : '')+
-          (info.email ? '<p style="font-size:.9rem;color:var(--ink);margin-bottom:6px;"><b>Email:</b> '+esc(info.email)+'</p>' : '')+
-          (info.telefono ? '<p style="font-size:.9rem;color:var(--ink);margin-bottom:6px;"><b>Teléfono:</b> '+esc(info.telefono)+'</p>' : '')+
-          '<p style="font-size:.76rem;color:var(--ink-faint);margin-bottom:14px;">Dato cargado por la empresa al registrarse en TradeX.</p>'+
-          '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
-            (info.email ? '<a class="btn btn-outline btn-sm" href="mailto:'+esc(info.email)+'">Escribir por email</a>' : '')+
-            (info.telefono ? '<a class="btn btn-outline btn-sm" href="tel:'+esc(info.telefono.replace(/[^+\d]/g,''))+'">Llamar</a>' : '')+
-          '</div>'+
-        '</div>';
-      }
+    if(canViewContact(c)){
       return '<div class="card card-pad" style="box-shadow:none;max-width:60ch;">'+
-        '<div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);font-weight:800;margin-bottom:8px;">Contacto</div>'+
-        '<p style="font-size:.9rem;color:var(--ink);margin-bottom:6px;"><b>Email:</b> '+esc(info.email)+'</p>'+
-        '<p style="font-size:.76rem;color:var(--ink-faint);margin-bottom:14px;">Inferido del dominio público de la empresa. Dato ilustrativo del prototipo, no verificado.</p>'+
-        '<a class="btn btn-outline btn-sm" href="mailto:'+esc(info.email)+'">Escribir por email</a>'+
+        '<p style="font-size:.85rem;color:var(--ink-faint);">Cargando contacto…</p>'+
       '</div>';
     }
     var loggedIn = !!currentUser;
@@ -1034,6 +1072,56 @@ var db = getFirestore(fbApp);
           '<button type="button" class="btn btn-accent btn-sm" data-open-login>Iniciar sesión</button>'
       )+
     '</div>';
+  }
+  function contactVerifiedCardHtml(info){
+    return '<div class="card card-pad" style="box-shadow:none;max-width:60ch;">'+
+      '<div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);font-weight:800;margin-bottom:8px;">Contacto</div>'+
+      (info.nombre ? '<p style="font-size:.9rem;color:var(--ink);margin-bottom:6px;"><b>Nombre:</b> '+esc(info.nombre)+'</p>' : '')+
+      (info.email ? '<p style="font-size:.9rem;color:var(--ink);margin-bottom:6px;"><b>Email:</b> '+esc(info.email)+'</p>' : '')+
+      (info.telefono ? '<p style="font-size:.9rem;color:var(--ink);margin-bottom:6px;"><b>Teléfono:</b> '+esc(info.telefono)+'</p>' : '')+
+      '<p style="font-size:.76rem;color:var(--ink-faint);margin-bottom:14px;">Dato cargado por la empresa al registrarse en TradeX.</p>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">'+
+        (info.email ? '<a class="btn btn-outline btn-sm" href="mailto:'+esc(info.email)+'">Escribir por email</a>' : '')+
+        (info.telefono ? '<a class="btn btn-outline btn-sm" href="tel:'+esc(info.telefono.replace(/[^+\d]/g,''))+'">Llamar</a>' : '')+
+      '</div>'+
+    '</div>';
+  }
+  function contactInferredCardHtml(email){
+    return '<div class="card card-pad" style="box-shadow:none;max-width:60ch;">'+
+      '<div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);font-weight:800;margin-bottom:8px;">Contacto</div>'+
+      '<p style="font-size:.9rem;color:var(--ink);margin-bottom:6px;"><b>Email:</b> '+esc(email)+'</p>'+
+      '<p style="font-size:.76rem;color:var(--ink-faint);margin-bottom:14px;">Inferido del dominio público de la empresa. Dato ilustrativo del prototipo, no verificado.</p>'+
+      '<a class="btn btn-outline btn-sm" href="mailto:'+esc(email)+'">Escribir por email</a>'+
+    '</div>';
+  }
+  function contactEmptyCardHtml(){
+    return '<div class="card card-pad" style="box-shadow:none;max-width:60ch;">'+
+      '<p style="font-size:.85rem;color:var(--ink-faint);">Esta ficha todavía no tiene un dominio público del que inferir un contacto.</p>'+
+    '</div>';
+  }
+  function bindContactPaneButtons(pane){
+    pane.querySelectorAll('[data-open-planes]').forEach(function(b){
+      b.addEventListener('click', function(){ switchView('planes'); });
+    });
+    pane.querySelectorAll('[data-open-login]').forEach(function(b){
+      b.addEventListener('click', function(){ openAuthDropdown('login'); });
+    });
+  }
+  function renderContactPaneDetails(pane, c){
+    if(!canViewContact(c)) return; // ya se renderizó la puerta (gate) de forma sincrónica
+    getDoc(doc(db, "companies", c.id, "private", "contact")).then(function(snap){
+      if(lastOpenCompanyId !== c.id) return; // el usuario navegó a otra ficha mientras tanto
+      if(snap.exists()){
+        pane.innerHTML = contactVerifiedCardHtml(snap.data());
+      } else {
+        var domain = domainFor(c);
+        pane.innerHTML = domain ? contactInferredCardHtml("contacto@"+domain) : contactEmptyCardHtml();
+      }
+    }).catch(function(err){
+      console.error("No se pudo leer el contacto:", err);
+      if(lastOpenCompanyId !== c.id) return;
+      pane.innerHTML = '<div class="card card-pad" style="box-shadow:none;max-width:60ch;"><p style="font-size:.85rem;color:var(--ink-faint);">No se pudo cargar el contacto.</p></div>';
+    });
   }
   function openCompany(id, preserveTab){
     var c = companyById[id];
@@ -1086,6 +1174,9 @@ var db = getFirestore(fbApp);
       var editBtn = document.getElementById("detailEditProfileBtn");
       if(editBtn) editBtn.addEventListener("click", openEditProfile);
     }
+
+    var contactoPane = card.querySelector('[data-pane="contacto"]');
+    if(contactoPane) renderContactPaneDetails(contactoPane, c);
 
     card.querySelectorAll('[data-tab]').forEach(function(btn){
       btn.addEventListener('click', function(){
@@ -1157,17 +1248,28 @@ var db = getFirestore(fbApp);
   });
 
   document.getElementById("submitRfq").addEventListener('click', function(){
+    if(!currentUser){ openAuthDropdown("login"); return; }
     var titulo = document.getElementById("fTitulo").value.trim();
     var categoria = document.getElementById("fCategoria").value.trim();
     var ubicacion = document.getElementById("fUbicacion").value.trim();
     var entrega = document.getElementById("fEntrega").value.trim();
     var presupuesto = document.getElementById("fPresupuesto").value.trim();
     if(!titulo || !categoria){ document.getElementById("fTitulo").focus(); return; }
-    rfqs.unshift({ id: Date.now(), title:titulo, buyer:(currentUser && currentUser.name) || "Empresa de la red", category:categoria||"General",
-      location:ubicacion||"—", budget:presupuesto||"A definir", deadline:entrega||"A definir", quotes:0, match:100 });
-    renderRfq();
-    ["fTitulo","fCategoria","fUbicacion","fEntrega","fPresupuesto"].forEach(function(id){ document.getElementById(id).value=""; });
-    document.getElementById("rfqForm").hidden = true;
+    var btn = this;
+    btn.disabled = true;
+    addDoc(collection(db, "rfqs"), {
+      title: titulo, category: categoria || "General",
+      location: ubicacion || "—", budget: presupuesto || "A definir", deadline: entrega || "A definir",
+      buyerId: currentUser.id, buyerName: currentUser.name || "Empresa de la red",
+      quotes: 0, createdAt: serverTimestamp()
+    }).then(function(){
+      ["fTitulo","fCategoria","fUbicacion","fEntrega","fPresupuesto"].forEach(function(id){ document.getElementById(id).value=""; });
+      document.getElementById("rfqForm").hidden = true;
+    }).catch(function(err){
+      alert("No se pudo publicar el requerimiento: " + err.message);
+    }).finally(function(){
+      btn.disabled = false;
+    });
   });
 
   document.getElementById("composerText").addEventListener('focus', function(){
