@@ -71,6 +71,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"></path></svg>
           Ver mi perfil
         </button>
+        <button type="button" class="account-menu-item" id="accountMenuPanel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 20V10"></path><path d="M12 20V4"></path><path d="M20 20v-7"></path></svg>
+          Mi rendimiento
+        </button>
         <button type="button" class="account-menu-item" id="accountMenuEdit">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
           Editar perfil
@@ -206,6 +210,7 @@
         <div class="rail-title">Tu espacio</div>
         <nav class="nav-list">
           <a data-nav="feed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17 9 11l4 4 8-8"></path></svg>Actividad</a>
+          <a data-nav="panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10"></path><path d="M12 20V4"></path><path d="M20 20v-7"></path></svg>Mi rendimiento</a>
           <a data-nav="directorio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"></rect><circle cx="9" cy="9" r="2.2"></circle><path d="M21 15l-4.5-4.5L9 18"></path></svg>Directorio</a>
           <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 3 6v6c0 5 4 8 9 10 5-2 9-5 9-10V6l-9-4Z"></path></svg>Fuentes citadas</a>
           <a data-nav="rfq"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.3 2"></path></svg>Historial de RFQs</a>
@@ -273,27 +278,48 @@
         <div class="view-head">
           <div>
             <h2>Oportunidades abiertas</h2>
-            <p>Requerimientos publicados por compradores de la red.</p>
+            <p>Requerimientos de compradores de la red y licitaciones públicas por rubro.</p>
           </div>
           <button class="btn btn-outline btn-sm" id="toggleRfqForm">+ Publicar requerimiento</button>
+        </div>
+
+        <div class="auth-tabs rfq-tabs" id="rfqTabs">
+          <button type="button" data-rfq-tab="red" aria-selected="true">Requerimientos de la red</button>
+          <button type="button" data-rfq-tab="licitaciones" aria-selected="false">Licitaciones públicas</button>
         </div>
 
         <div class="card card-pad" id="rfqForm" hidden>
           <h3 style="font-size:1rem;margin-bottom:12px;">Nuevo requerimiento</h3>
           <div class="form-grid">
-            <div class="field"><label>Categoría</label><input id="fCategoria" placeholder="p. ej. Empaque corrugado" /></div>
-            <div class="field"><label>Ubicación</label><input id="fUbicacion" placeholder="p. ej. León, GTO" /></div>
-            <div class="field"><label>Entrega requerida</label><input id="fEntrega" placeholder="p. ej. 15 de noviembre" /></div>
-            <div class="field"><label>Presupuesto estimado</label><input id="fPresupuesto" placeholder="p. ej. $80–120k MXN" /></div>
+            <div class="field"><label>Categoría</label><input id="fCategoria" placeholder="p. ej. Servicios de izaje" /></div>
+            <div class="field"><label>Ubicación</label><input id="fUbicacion" placeholder="p. ej. Añelo, Neuquén" /></div>
+            <div class="field"><label>Entrega requerida</label><input id="fEntrega" placeholder="p. ej. 15 de diciembre" /></div>
+            <div class="field"><label>Presupuesto estimado</label><input id="fPresupuesto" placeholder="p. ej. ARS 8–12 M" /></div>
           </div>
-          <div class="field" style="margin-top:12px;"><label>Título del requerimiento</label><input id="fTitulo" placeholder="p. ej. Empaque corrugado — 50,000 u/mes" /></div>
+          <div class="field" style="margin-top:12px;"><label>Título del requerimiento</label><input id="fTitulo" placeholder="p. ej. Grúa de 50 t para montaje — 3 semanas" /></div>
           <div style="display:flex; gap:10px; margin-top:14px;">
             <button class="btn btn-accent btn-sm" id="submitRfq">Publicar RFQ</button>
-            <span style="font-size:.76rem;color:var(--ink-faint); align-self:center;">Los proveedores relevantes de tu categoría serán notificados.</span>
+            <span style="font-size:.76rem;color:var(--ink-faint); align-self:center;">Los proveedores Destacados reciben un aviso por mail y todos los de la red lo ven en Oportunidades.</span>
           </div>
         </div>
 
         <div id="rfqList" style="display:flex;flex-direction:column;gap:14px;"></div>
+
+        <div id="licitacionesWrap" hidden>
+          <div class="filters" id="licitacionFilters"></div>
+          <div id="licitacionesList" style="display:flex;flex-direction:column;gap:12px;margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- PANEL: MI RENDIMIENTO -->
+      <div class="view" id="view-panel" hidden>
+        <div class="view-head">
+          <div>
+            <h2>Mi rendimiento</h2>
+            <p id="panelSubtitle">Cómo te está yendo en TradeX este mes.</p>
+          </div>
+        </div>
+        <div id="panelBody"></div>
       </div>
 
       <!-- COMPANY DETAIL -->
@@ -362,8 +388,8 @@
 
       <div class="plans-head">
         <span class="eyebrow">Planes y precios</span>
-        <h1>Interactuar y descubrir es gratis. Cotizar y crecer, un paso más allá.</h1>
-        <p>Cualquiera puede ver la actividad, el directorio y las publicaciones de la red. Para hablar con un proveedor hace falta estar registrado — y desde ahí, cada perfil elige cuánto quiere invertir en crecer dentro de TradeX.</p>
+        <h1>Para comprar, TradeX es gratis. Para vender, te ponemos primero.</h1>
+        <p>Las empresas compradoras publican requerimientos y reciben cotizaciones sin pagar nada. Los proveedores eligen cuánto quieren invertir para que esas empresas los encuentren primero.</p>
       </div>
 
       <div class="plan-audience">
@@ -374,62 +400,57 @@
       </div>
 
       <!-- EMPRESAS -->
-      <div class="pricing-grid" data-plan-pane="empresas">
-        <div class="card plan-card" data-plan-card="empresa:gratis">
+      <div class="pricing-grid two" data-plan-pane="empresas">
+        <div class="card plan-card featured" data-plan-card="empresa:gratis">
+          <span class="plan-ribbon">Para compradores</span>
           <div class="plan-name">Gratis</div>
-          <div class="plan-desc">Para descubrir la red y crear tu perfil.</div>
+          <div class="plan-desc">Todo lo que necesita un equipo de compras para cotizar con proveedores verificados.</div>
           <div class="plan-price"><b>$0</b><span>/ siempre</span></div>
           <ul class="plan-features">
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Ver toda la actividad y el directorio completo</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Comentar y reaccionar a publicaciones</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Crear tu perfil de empresa</li>
-            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Solicitar cotizaciones a proveedores</li>
-            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Ver datos de contacto del directorio</li>
-          </ul>
-          <button class="btn btn-outline btn-block" data-select-plan="empresa:gratis">Empezar gratis</button>
-        </div>
-
-        <div class="card plan-card featured" data-plan-card="empresa:pro">
-          <span class="plan-ribbon">Recomendado</span>
-          <div class="plan-name">Pro</div>
-          <div class="plan-desc">Para equipos de compras que cotizan seguido.</div>
-          <div class="plan-price"><b>USD 79</b><span>/ mes</span></div>
-          <ul class="plan-features">
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Todo lo del plan Gratis</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Cotizaciones (RFQ) ilimitadas a proveedores verificados</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Filtros avanzados por evidencia, rubro y ubicación</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Requerimientos (RFQ) ilimitados</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Recibí y compará cotizaciones en un solo lugar</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Directorio completo con nivel de evidencia</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Contacto directo de los proveedores Destacados</li>
             <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Historial y seguimiento de tus RFQs</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Datos de contacto de empresas y proveedores del directorio</li>
           </ul>
-          <button class="btn btn-accent btn-block" data-select-plan="empresa:pro">Empezar Pro</button>
+          <button class="btn btn-accent btn-block" data-select-plan="empresa:gratis">Crear cuenta gratis</button>
         </div>
 
         <div class="card plan-card" data-plan-card="empresa:enterprise">
           <div class="plan-name">Enterprise</div>
-          <div class="plan-desc">Para compras de gran escala o multi-proyecto.</div>
-          <div class="plan-price"><b>A medida</b></div>
+          <div class="plan-desc">Para compras de gran escala, multi-proyecto o con varios equipos.</div>
+          <div class="plan-price"><b>Desde USD 800</b><span>/ mes</span></div>
           <ul class="plan-features">
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Todo lo del plan Pro</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Panel de inteligencia de mercado (precios de referencia, demanda por rubro)</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>API para integrar cotizaciones a tu sistema de compras</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Matching asistido y gestor de cuenta dedicado</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Todo lo del plan Gratis</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Contacto de todo el directorio, no solo Destacados</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Panel de precios de referencia y demanda por rubro</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>API para conectar TradeX a tu sistema de compras</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Matching asistido: shortlist de proveedores armada por nuestro equipo</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Gestor de cuenta dedicado</li>
           </ul>
           <button class="btn btn-outline btn-block" data-select-plan="empresa:enterprise">Hablar con ventas</button>
         </div>
       </div>
 
       <!-- PROVEEDORES -->
-      <div class="pricing-grid" data-plan-pane="proveedores" hidden>
+      <div data-plan-pane="proveedores" hidden>
+        <div class="billing-toggle" id="billingToggle" role="group" aria-label="Frecuencia de pago">
+          <button type="button" data-billing="mensual" aria-pressed="true">Mensual</button>
+          <button type="button" data-billing="anual" aria-pressed="false">Anual <span class="billing-save">2 meses gratis</span></button>
+        </div>
+        <div class="pricing-grid">
         <div class="card plan-card" data-plan-card="proveedor:gratis">
           <div class="plan-name">Gratis</div>
-          <div class="plan-desc">Para estar en el directorio y empezar a ser visto.</div>
+          <div class="plan-desc">Para estar en el directorio y probar la red.</div>
           <div class="plan-price"><b>$0</b><span>/ siempre</span></div>
           <ul class="plan-features">
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Perfil básico en el directorio</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Perfil en el directorio</li>
             <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Publicar novedades en el feed</li>
-            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Recibir cotizaciones dentro de tu categoría</li>
-            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Prioridad en resultados de búsqueda</li>
-            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Ver datos de contacto del directorio</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Cotizar hasta 3 requerimientos por mes</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Muestra semanal de licitaciones públicas</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Saber cuántas empresas vieron tu perfil</li>
+            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Primero en búsquedas de tu categoría</li>
+            <li class="excluded"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"></path></svg>Tu contacto visible para compradores</li>
           </ul>
           <button class="btn btn-outline btn-block" data-select-plan="proveedor:gratis">Crear mi perfil</button>
         </div>
@@ -437,72 +458,61 @@
         <div class="card plan-card featured" data-plan-card="proveedor:destacado">
           <span class="plan-ribbon">Recomendado</span>
           <div class="plan-name">Destacado</div>
-          <div class="plan-desc">Para aparecer primero cuando te buscan.</div>
-          <div class="plan-price"><b>USD 49</b><span>/ mes</span></div>
+          <div class="plan-desc">Para que las empresas compradoras te encuentren primero y te contacten directo.</div>
+          <div class="plan-price" data-billing-show="mensual"><b>USD 49</b><span>/ mes</span></div>
+          <div class="plan-price" data-billing-show="anual" hidden><b>USD 490</b><span>/ año · equivale a USD 41/mes</span></div>
           <ul class="plan-features">
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Todo lo del plan Gratis</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Primero en tu categoría y ubicación</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Badge de proveedor verificado</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Cotizaciones ilimitadas, sin tope mensual</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Datos de contacto de empresas y proveedores del directorio</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Primero en tu categoría y ubicación, con badge Destacado</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Tu contacto visible para todas las empresas compradoras</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Cotizaciones ilimitadas</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Todas las licitaciones públicas de tu rubro</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Quién vio tu perfil y reporte mensual de rendimiento</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg><span><b>Garantía de 30 días</b>: si ninguna empresa ve tu contacto, el mes siguiente es gratis</span></li>
           </ul>
           <button class="btn btn-accent btn-block" data-select-plan="proveedor:destacado">Destacar mi perfil</button>
         </div>
 
         <div class="card plan-card" data-plan-card="proveedor:porcotizacion">
           <div class="plan-name">Por cotización</div>
-          <div class="plan-desc">Sin suscripción: pagás solo por cada lead calificado.</div>
-          <div class="plan-price"><b>Variable</b></div>
+          <div class="plan-desc">Sin suscripción: pagás solo cuando cotizás.</div>
+          <div class="plan-price"><b>USD 8</b><span>/ cotización enviada</span></div>
           <ul class="plan-features">
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Ideal para empezar sin costo fijo</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Pagás solo cuando una empresa te cotiza a vos</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Sin costo fijo mensual</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Cotizá todos los requerimientos que quieras</li>
             <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Métricas de rendimiento de tu perfil</li>
-            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Podés pasarte a Destacado cuando quieras</li>
+            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Pasate a Destacado cuando te convenga</li>
           </ul>
-          <button class="btn btn-outline btn-block" data-select-plan="proveedor:porcotizacion">Consultar tarifas</button>
+          <button class="btn btn-outline btn-block" data-select-plan="proveedor:porcotizacion">Activar por cotización</button>
         </div>
+        </div>
+        <p class="plans-note">Precios en dólares, cobrados en pesos al tipo de cambio del día del cobro. Cancelás cuando quieras.</p>
       </div>
 
       <div class="revenue-head">
-        <h2>Otras formas en que crece TradeX</h2>
-        <p>Más allá de las suscripciones, así se financia el resto de la red.</p>
+        <h2>Sumá a tu plan</h2>
+        <p>Extras opcionales para proveedores y empresas.</p>
       </div>
       <div class="revenue-grid">
         <div class="card card-pad revenue-card">
           <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4Z"></path><path d="m9 12 2 2 4-4"></path></svg></div>
-          <span class="revenue-tag">Add-on</span>
+          <span class="revenue-tag">Add-on · USD 150 / año</span>
           <b>Verificación &amp; compliance</b>
-          <p>Validamos certificaciones y documentación legal de un proveedor para darle el badge verificado — pago, opcional, y valorado tanto por quien lo tiene como por quien filtra por él.</p>
+          <p>Revisamos tu constancia de CUIT, habilitaciones y certificaciones, y tu ficha pasa a mostrar el badge "Verificada por TradeX". Las empresas pueden filtrar por él.</p>
+          <button class="btn btn-outline btn-sm" data-select-plan="proveedor:verificacion" style="margin-top:auto;align-self:flex-start;">Pedir verificación</button>
         </div>
         <div class="card card-pad revenue-card">
           <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11v2a2 2 0 0 0 2 2h1l3 5V4L6 9H5a2 2 0 0 0-2 2Z"></path><path d="M14 8a4 4 0 0 1 0 8"></path><path d="M17 5a8 8 0 0 1 0 14"></path></svg></div>
-          <span class="revenue-tag">Publicidad</span>
-          <b>Publicaciones patrocinadas</b>
-          <p>Proveedores y empresas pueden destacar una publicación en el feed para llegar a más de la red, marcada siempre como "Patrocinado".</p>
-        </div>
-        <div class="card card-pad revenue-card">
-          <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10"></path><path d="M12 20V4"></path><path d="M20 20v-7"></path></svg></div>
-          <span class="revenue-tag">Enterprise</span>
-          <b>Datos e inteligencia de mercado</b>
-          <p>Reportes agregados y anónimos de precios de referencia, tiempos de respuesta y demanda por rubro, vendidos como dashboard a empresas grandes.</p>
-        </div>
-        <div class="card card-pad revenue-card">
-          <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 6-5 6 5 6"></path><path d="m16 6 5 6-5 6"></path></svg></div>
-          <span class="revenue-tag">Enterprise</span>
-          <b>API &amp; integraciones</b>
-          <p>Acceso programático al directorio y a las cotizaciones para conectar TradeX con el sistema de compras de tu empresa.</p>
+          <span class="revenue-tag">Publicidad · USD 25 / semana</span>
+          <b>Publicación patrocinada</b>
+          <p>Tu publicación queda fija arriba del feed durante una semana, marcada siempre como "Patrocinado".</p>
+          <button class="btn btn-outline btn-sm" data-select-plan="proveedor:patrocinada" style="margin-top:auto;align-self:flex-start;">Patrocinar una publicación</button>
         </div>
         <div class="card card-pad revenue-card">
           <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"></circle><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"></path><path d="m17 11 2 2 4-4"></path></svg></div>
-          <span class="revenue-tag">A medida</span>
+          <span class="revenue-tag">Empresas · USD 300 / requerimiento</span>
           <b>Matching asistido</b>
-          <p>Para requerimientos complejos, un especialista de TradeX arma a mano la shortlist de proveedores más adecuados.</p>
-        </div>
-        <div class="card card-pad revenue-card">
-          <div class="icon-chip"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="4"></circle><circle cx="12" cy="12" r=".6" fill="currentColor"></circle></svg></div>
-          <span class="revenue-tag">Proveedores</span>
-          <b>Pago por cotización</b>
-          <p>Alternativa a la suscripción: el proveedor paga solo por cada solicitud de cotización calificada que recibe, sin costo fijo mensual.</p>
+          <p>Para un requerimiento complejo, nuestro equipo arma a mano una shortlist de 3 a 5 proveedores adecuados en 72 horas hábiles.</p>
+          <button class="btn btn-outline btn-sm" data-select-plan="empresa:matching" style="margin-top:auto;align-self:flex-start;">Pedir un matching</button>
         </div>
       </div>
 

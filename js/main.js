@@ -5,7 +5,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, setDoc, updateDoc,
-  addDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp
+  addDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp,
+  where, getDocs, writeBatch, increment
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 var firebaseConfig = {
@@ -71,6 +72,34 @@ var db = getFirestore(fbApp);
 
   var AVATAR_COLORS = ["var(--accent)","var(--accent-3)","#F7CBB4"];
 
+  /* ---------- monetización: configuración ----------
+     PAYMENTS_ENABLED: dejalo en false hasta deployar las Cloud Functions de
+     /functions (Mercado Pago). Mientras esté en false, tocar un plan pago
+     guarda una "solicitud" en la colección planRequests y el equipo la
+     activa a mano — así no perdés a nadie que quiera pagar.
+     Ver docs/GUIA-MONETIZACION.md. */
+  var PAYMENTS_ENABLED = false;
+  var FUNCTIONS_REGION = "us-central1"; // región por defecto de functions/index.js
+  var SITE_URL = "https://tradexcorp.netlify.app/";
+  // "pro" queda solo por compatibilidad con cuentas viejas.
+  var PAID_PLANS = ["destacado", "porcotizacion", "enterprise", "pro"];
+  var FREE_QUOTES_PER_MONTH = 3;
+  var GUARANTEE_DAYS = 30;
+
+  function isPaid(u){ return !!(u && u.plan && PAID_PLANS.indexOf(u.plan) !== -1); }
+  function accountTypeOf(u){ return (u && u.accountType) || "empresa"; }
+  function isDestacado(c){ return !!(c && c.plan === "destacado"); }
+  function monthKey(d){
+    d = d || new Date();
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  }
+  function tsToDate(ts){
+    if(!ts) return null;
+    if(typeof ts.toDate === "function") return ts.toDate();
+    var d = new Date(ts);
+    return isNaN(d) ? null : d;
+  }
+
   var companies = [];
   var companyById = {};
   var directoryLoaded = false;
@@ -119,6 +148,12 @@ var db = getFirestore(fbApp);
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"></path></svg>Verificada por TradeX</span>';
   }
 
+  function destacadoBadge(c){
+    if(!isDestacado(c)) return '';
+    return '<span class="tag tag-destacado">'+
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="m12 2 3 6.6 7 .9-5.1 4.9 1.3 7.1L12 18l-6.2 3.5 1.3-7.1L2 9.5l7-.9Z"></path></svg>Destacado</span>';
+  }
+
   function locationLine(c){
     // Ojo: el <svg> necesita width/height explícitos. Sin ellos, el
     // navegador le da su tamaño intrínseco por defecto (bastante grande),
@@ -147,18 +182,32 @@ var db = getFirestore(fbApp);
     gratis: "Gratis", pro: "Pro", enterprise: "Enterprise",
     destacado: "Destacado", porcotizacion: "Por cotización"
   };
+  var PLAN_REQUEST_MESSAGES = {
+    destacado: "¡Listo! Recibimos tu pedido de plan Destacado. Te escribimos en menos de 24 h hábiles con el link de pago y lo activamos apenas se acredite.",
+    porcotizacion: "¡Listo! Recibimos tu pedido del plan Por cotización. Te escribimos en menos de 24 h hábiles para activarlo.",
+    enterprise: "¡Gracias! Recibimos tu consulta por Enterprise. Te escribimos en menos de 24 h hábiles para coordinar una llamada.",
+    verificacion: "¡Listo! Recibimos tu pedido de verificación. Te escribimos para pedirte la constancia de CUIT y las habilitaciones.",
+    patrocinada: "¡Listo! Recibimos tu pedido de publicación patrocinada. Te escribimos para elegir la publicación y la semana.",
+    matching: "¡Listo! Recibimos tu pedido de matching asistido. Te escribimos para entender el requerimiento."
+  };
   function domainFor(c){
     if(!c.fuente) return null;
     try{ return new URL(c.fuente).hostname.replace(/^www\./,""); }
     catch(e){ return null; }
   }
   function hasContactAccess(){
-    return !!(currentUser && currentUser.plan && currentUser.plan !== "gratis");
+    return isPaid(currentUser);
   }
-  // Además del plan pago, el dueño de una ficha siempre puede ver su propio
-  // contacto (coincide con lo que permiten las reglas de seguridad).
+  // Quién ve el contacto de una ficha (coincide con firestore.rules):
+  //  - el dueño de la ficha;
+  //  - cualquier cuenta con plan pago;
+  //  - cualquier empresa compradora, si la ficha es de un proveedor
+  //    Destacado — eso es justamente lo que paga el proveedor.
   function canViewContact(c){
-    return hasContactAccess() || !!(currentUser && c && currentUser.id === c.id);
+    if(!currentUser || !c) return false;
+    if(currentUser.id === c.id) return true;
+    if(hasContactAccess()) return true;
+    return isDestacado(c) && accountTypeOf(currentUser) === "empresa";
   }
 
   /* ---------- account / auth ---------- */
@@ -245,6 +294,7 @@ var db = getFirestore(fbApp);
       renderDirectory();
       renderSuggestions();
       renderNetworkMap();
+      if(!deepLinkHandled) handleDeepLink();
       if(authUid && companyById[authUid]){
         currentUser = companyById[authUid];
         loadCurrentUserContact(authUid);
@@ -388,6 +438,18 @@ var db = getFirestore(fbApp);
     document.getElementById("notifBtn").hidden = !loggedIn;
     document.getElementById("composerHint").textContent = loggedIn ? "Visible para toda tu red B2B" : "Iniciá sesión para publicar";
     if(loggedIn) renderAccount();
+    onUserContextChanged();
+  }
+
+  // Todo lo que depende de quién está logueado y con qué plan.
+  function onUserContextChanged(){
+    renderRfq();
+    renderPlanButtons();
+    var rfqView = document.getElementById("view-rfq");
+    if(activeRfqTab === "licitaciones" && rfqView && !rfqView.hidden) loadLicitaciones();
+    var panelView = document.getElementById("view-panel");
+    if(panelView && !panelView.hidden) renderPanel();
+    resumePendingClaim();
   }
 
   function openAuthDropdown(tab){
@@ -415,10 +477,12 @@ var db = getFirestore(fbApp);
     onAuthStateChanged(auth, function(user){
       if(user){
         authUid = user.uid;
+        attachUserListeners(user.uid);
         setCurrentUserFromUid(user.uid);
       } else {
         authUid = null;
         currentUser = null;
+        detachUserListeners();
         refreshAuthUI();
       }
     });
@@ -466,7 +530,7 @@ var db = getFirestore(fbApp);
     document.querySelectorAll("#planAudienceTabs [data-plan-tab]").forEach(function(b){
       b.setAttribute("aria-selected", b.getAttribute("data-plan-tab") === tab ? "true" : "false");
     });
-    document.querySelectorAll(".pricing-grid[data-plan-pane]").forEach(function(p){
+    document.querySelectorAll("[data-plan-pane]").forEach(function(p){
       p.hidden = p.getAttribute("data-plan-pane") !== tab;
     });
   }
@@ -613,7 +677,7 @@ var db = getFirestore(fbApp);
         closeAuthDropdown();
         formEl.reset();
         switchRegTab("empresa");
-        openCompany(uid);
+        if(pendingClaimId) resumePendingClaim(); else openCompany(uid);
         trackEvent('sign_up', {method:'email', account_type: accountType});
       });
     }).catch(function(err){
@@ -625,61 +689,133 @@ var db = getFirestore(fbApp);
     });
   });
 
-  /* ---------- plan selection (simulated — no real payments) ---------- */
+  /* ---------- plan selection ----------
+     El campo "plan" no se puede escribir desde el cliente (ver
+     firestore.rules). Lo cambia la Cloud Function del webhook de Mercado
+     Pago cuando el cobro se aprueba, o el equipo a mano desde la consola.
+     Mientras PAYMENTS_ENABLED sea false, cada click en un plan pago queda
+     guardado en planRequests para que lo activen a mano. */
+  var providerBilling = "mensual";
+
+  function setProviderBilling(billing){
+    providerBilling = billing === "anual" ? "anual" : "mensual";
+    document.querySelectorAll("#billingToggle [data-billing]").forEach(function(b){
+      b.setAttribute("aria-pressed", b.getAttribute("data-billing") === providerBilling ? "true" : "false");
+    });
+    document.querySelectorAll("[data-billing-show]").forEach(function(el){
+      el.hidden = el.getAttribute("data-billing-show") !== providerBilling;
+    });
+  }
+  document.querySelectorAll("#billingToggle [data-billing]").forEach(function(b){
+    b.addEventListener("click", function(){ setProviderBilling(b.getAttribute("data-billing")); });
+  });
+
   function renderPlanButtons(){
     document.querySelectorAll("[data-plan-card]").forEach(function(card){
       var key = card.getAttribute("data-plan-card");
       var planKey = key.split(":")[1];
       var btn = card.querySelector("[data-select-plan]");
       if(!btn) return;
-      var isCurrent = !!(currentUser && currentUser.plan === planKey);
+      var isCurrent = !!(currentUser && (currentUser.plan || "gratis") === planKey);
       card.classList.toggle("is-current-plan", isCurrent);
       if(isCurrent){
         btn.textContent = "Tu plan actual";
         btn.disabled = true;
-        btn.classList.add("btn-outline");
-        btn.classList.remove("btn-accent");
       } else {
         btn.disabled = false;
         btn.textContent = btn.getAttribute("data-default-label") || btn.textContent;
       }
-      if(!btn.getAttribute("data-default-label")){
-        btn.setAttribute("data-default-label", isCurrent ? "" : btn.textContent);
-      }
     });
   }
+
+  function savePlanRequest(plan, billing){
+    return addDoc(collection(db, "planRequests"), {
+      uid: currentUser.id,
+      companyName: currentUser.name || "",
+      accountType: accountTypeOf(currentUser),
+      currentPlan: currentUser.plan || "gratis",
+      plan: plan,
+      billing: billing || null,
+      status: "pendiente",
+      createdAt: serverTimestamp()
+    }).then(function(){
+      alert(PLAN_REQUEST_MESSAGES[plan] || "¡Listo! Recibimos tu pedido. Te escribimos en menos de 24 h hábiles.");
+    });
+  }
+
+  // Abre el checkout de Mercado Pago (suscripción para Destacado, pago único
+  // para Verificación) a través de la Cloud Function "crearSuscripcion".
+  // Si algo falla, no se pierde la venta: queda como solicitud manual.
+  function startCheckout(plan, billing){
+    return import("https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js").then(function(m){
+      var fns = m.getFunctions(fbApp, FUNCTIONS_REGION);
+      return m.httpsCallable(fns, "crearSuscripcion")({ plan: plan, billing: billing || "mensual" });
+    }).then(function(res){
+      if(!res || !res.data || !res.data.url) throw new Error("La función no devolvió un link de pago.");
+      trackEvent("begin_checkout", { plan: plan, billing: billing || null });
+      window.location.href = res.data.url;
+    });
+  }
+
+  function requestPlan(plan, billing, btn){
+    trackEvent("plan_request", { plan: plan, billing: billing || null });
+    var label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Procesando…";
+    var canCheckout = PAYMENTS_ENABLED && (plan === "destacado" || plan === "verificacion");
+    var task = canCheckout
+      ? startCheckout(plan, billing).catch(function(err){
+          logClientError("Checkout falló: " + (err && err.message), { plan: plan });
+          return savePlanRequest(plan, billing);
+        })
+      : savePlanRequest(plan, billing);
+    return task.catch(function(err){
+      alert("No pudimos registrar tu pedido: " + (err && err.message ? err.message : "intentá de nuevo."));
+    }).finally(function(){
+      btn.disabled = false;
+      btn.textContent = label;
+      renderPlanButtons();
+    });
+  }
+
   document.querySelectorAll("[data-select-plan]").forEach(function(btn){
     btn.setAttribute("data-default-label", btn.textContent);
     btn.addEventListener("click", function(){
+      var parts = btn.getAttribute("data-select-plan").split(":");
+      var kind = parts[0], planKey = parts[1];
       if(!currentUser){
-        var kind = btn.getAttribute("data-select-plan").split(":")[0];
         openAuthDropdown("register");
         switchRegTab(kind === "proveedor" ? "proveedor" : "empresa");
+        window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
-      var planKey = btn.getAttribute("data-select-plan").split(":")[1];
-      if(planKey !== "gratis"){
-        // Los planes pagos todavía no tienen un cobro real detrás (no hay
-        // integración de pagos ni Cloud Function que valide nada), y las
-        // reglas de seguridad ahora impiden que el cliente se autoasigne
-        // un plan pago escribiendo el campo "plan" directamente. Hasta que
-        // exista un medio de pago, se activa a mano desde el equipo.
-        // Este evento queda registrado en Analytics: es la señal más barata
-        // que existe de "cuánta gente quiere pagar" antes de construir el
-        // cobro real — conviene mirarlo antes de meterse con Mercado Pago.
-        trackEvent('plan_interest_blocked', {plan: planKey});
-        alert("Este plan todavía no se puede activar solo — estamos integrando el cobro. Escribinos y lo activamos nosotros mientras tanto.");
+      if(planKey === "gratis"){
+        if(isPaid(currentUser)){
+          alert("Para volver al plan Gratis, cancelá la suscripción desde tu cuenta de Mercado Pago o escribinos y la damos de baja nosotros.");
+        }
         return;
       }
-      btn.disabled = true;
-      updateDoc(doc(db, "companies", currentUser.id), {plan: planKey}).catch(function(err){
-        alert("No se pudo actualizar el plan: " + err.message);
-      }).finally(function(){
-        btn.disabled = false;
-      });
+      requestPlan(planKey, planKey === "destacado" ? providerBilling : null, btn);
     });
   });
   renderPlanButtons();
+
+  // Al volver del checkout de Mercado Pago (?pago=ok|pendiente|error).
+  (function handlePaymentReturn(){
+    var params = new URLSearchParams(window.location.search);
+    var estado = params.get("pago");
+    if(!estado) return;
+    var msg = {
+      ok: "¡Gracias! Recibimos tu pago. Tu plan se activa en unos minutos, apenas Mercado Pago nos confirme el cobro.",
+      pendiente: "Tu pago quedó pendiente. Apenas se acredite, tu plan se activa solo.",
+      error: "El pago no se pudo completar. Podés intentar de nuevo desde Planes o escribirnos."
+    }[estado];
+    if(msg) setTimeout(function(){ alert(msg); }, 400);
+    trackEvent("checkout_return", { estado: estado });
+    params.delete("pago");
+    var qs = params.toString();
+    history.replaceState(null, "", window.location.pathname + (qs ? "?" + qs : "") + window.location.hash);
+  })();
 
   /* ---------- account menu (avatar click) ---------- */
   function closeAccountMenu(){
@@ -698,6 +834,10 @@ var db = getFirestore(fbApp);
   document.getElementById("accountMenuProfile").addEventListener("click", function(){
     closeAccountMenu();
     if(currentUser) openCompany(currentUser.id);
+  });
+  document.getElementById("accountMenuPanel").addEventListener("click", function(){
+    closeAccountMenu();
+    switchView("panel");
   });
   document.getElementById("accountMenuEdit").addEventListener("click", function(){
     openEditProfile();
@@ -905,7 +1045,13 @@ var db = getFirestore(fbApp);
 
     var pieces = [];
     var adIdx = 0;
-    userPosts.forEach(function(it, i){
+    // Publicaciones patrocinadas (add-on pago): el equipo les pone
+    // "sponsoredUntil" desde Firebase Console y quedan fijas arriba hasta esa
+    // fecha, siempre marcadas como "Patrocinado".
+    var nowMs = Date.now();
+    function isSponsored(p){ var d = tsToDate(p.sponsoredUntil); return !!(d && d.getTime() > nowMs); }
+    var orderedPosts = userPosts.filter(isSponsored).concat(userPosts.filter(function(p){ return !isSponsored(p); }));
+    orderedPosts.forEach(function(it, i){
       var likes = likesForPost(it.id);
       var liked = hasLiked(it.id);
       var comments = commentsForPost(it.id);
@@ -923,7 +1069,7 @@ var db = getFirestore(fbApp);
       pieces.push('<article class="card card-pad" data-post-id="'+it.id+'">'+
         '<div class="post-head">'+
           '<div class="avatar-lg" style="width:42px;height:42px;border-radius:11px;border:0;font-size:.78rem;color:var(--ink);background:var(--accent-2)">'+avatarContent(it)+'</div>'+
-          '<div><div class="post-name">'+esc(it.name)+'</div><div class="post-meta">'+esc(it.sector)+' · '+esc(formatPostTime(it.createdAt))+'</div></div>'+
+          '<div><div class="post-name">'+esc(it.name)+'</div><div class="post-meta">'+(isSponsored(it) ? '<b style="color:var(--accent-3-strong);">Patrocinado</b> · ' : '')+esc(it.sector)+' · '+esc(formatPostTime(it.createdAt))+'</div></div>'+
         '</div>'+
         (it.text ? '<p class="post-text">'+esc(it.text)+'</p>' : '')+
         mediaHtml+
@@ -986,6 +1132,9 @@ var db = getFirestore(fbApp);
       var matchesQ = !q || (c.name+" "+c.sector+" "+c.vinculo+" "+(c.ubicacion||"")).toLowerCase().indexOf(q) !== -1;
       return matchesCat && matchesQ;
     });
+    // Los proveedores Destacados aparecen primero (es lo que pagan). El
+    // orden dentro de cada grupo se mantiene alfabético.
+    list = list.filter(isDestacado).concat(list.filter(function(c){ return !isDestacado(c); }));
     var el = document.getElementById("companyGrid");
     if(!directoryLoaded){
       document.getElementById("dirCount").textContent = "Cargando directorio…";
@@ -1004,7 +1153,7 @@ var db = getFirestore(fbApp);
             '<div class="loc">'+locationLine(c)+'</div>'+
           '</div>'+
         '</div>'+
-        '<div class="certs">'+verifiedBadge(c)+evidenceBadge(c.evidencia)+selfTag(c)+'</div>'+
+        '<div class="certs">'+destacadoBadge(c)+verifiedBadge(c)+evidenceBadge(c.evidencia)+selfTag(c)+'</div>'+
         '<div class="footline"><span style="font-size:.72rem;color:var(--ink-faint);">'+(c.fuente? 'Fuente pública citada' : 'Sin fuente pública')+'</span><span style="font-size:.72rem;color:var(--accent-strong);font-weight:700;">Ver ficha →</span></div>'+
       '</button>';
     }).join('');
@@ -1085,7 +1234,111 @@ var db = getFirestore(fbApp);
     });
   }
 
-  /* ---------- render: rfq ---------- */
+  /* ---------- métricas: vistas de perfil y de contacto ----------
+     Un documento por (empresa vista, empresa que mira, mes). El id fijo hace
+     que mirar la misma ficha diez veces en el mes cuente una sola vez, y
+     las reglas solo dejan leerlos al dueño de la ficha. Con esto se arma el
+     panel "Mi rendimiento", el reporte mensual y la garantía de Destacado. */
+  var loggedViews = {};
+  function logView(kind, companyId){
+    if(!currentUser || !companyId || currentUser.id === companyId) return;
+    var month = monthKey();
+    var id = companyId + "__" + currentUser.id + "__" + month;
+    if(loggedViews[kind + ":" + id]) return;
+    loggedViews[kind + ":" + id] = true;
+    setDoc(doc(db, kind, id), {
+      companyId: companyId,
+      viewerId: currentUser.id,
+      viewerName: currentUser.name || "",
+      viewerType: accountTypeOf(currentUser),
+      month: month,
+      createdAt: serverTimestamp()
+    }).catch(function(){ /* ya registrada este mes: las reglas no dejan pisarla */ });
+  }
+
+  /* ---------- listeners propios del usuario logueado ---------- */
+  var myQuotes = [];        // cotizaciones que mandé (como proveedor)
+  var receivedQuotes = [];  // cotizaciones que recibí en mis RFQs (como comprador)
+  var myClaims = [];        // pedidos de "reclamar perfil" que hice
+  var userUnsubs = [];
+  var userListenersUid = null;
+
+  function attachUserListeners(uid){
+    if(userListenersUid === uid) return;
+    detachUserListeners();
+    userListenersUid = uid;
+    userUnsubs.push(onSnapshot(query(collection(db, "quotes"), where("supplierId", "==", uid)), function(snap){
+      myQuotes = snap.docs.map(function(d){ var x = d.data(); x.id = d.id; return x; });
+      renderRfq();
+    }, function(err){ console.error("No se pudieron leer tus cotizaciones:", err); }));
+    userUnsubs.push(onSnapshot(query(collection(db, "quotes"), where("buyerId", "==", uid)), function(snap){
+      receivedQuotes = snap.docs.map(function(d){ var x = d.data(); x.id = d.id; return x; });
+      receivedQuotes.sort(function(x, y){ return ((tsToDate(y.createdAt) || 0) - (tsToDate(x.createdAt) || 0)); });
+      renderRfq();
+    }, function(err){ console.error("No se pudieron leer las cotizaciones recibidas:", err); }));
+    userUnsubs.push(onSnapshot(query(collection(db, "claims"), where("uid", "==", uid)), function(snap){
+      myClaims = snap.docs.map(function(d){ var x = d.data(); x.id = d.id; return x; });
+      refreshOpenClaimBox();
+    }, function(err){ console.error("No se pudieron leer tus reclamos:", err); }));
+  }
+  function detachUserListeners(){
+    userUnsubs.forEach(function(u){ try{ u(); }catch(e){} });
+    userUnsubs = [];
+    userListenersUid = null;
+    myQuotes = []; receivedQuotes = []; myClaims = [];
+  }
+
+  function quotesThisMonth(){
+    var m = monthKey();
+    return myQuotes.filter(function(q){ return q.month === m; }).length;
+  }
+
+  /* ---------- render: rfq + cotizaciones ---------- */
+  var openQuoteForm = {};
+  var openQuoteList = {};
+
+  function quoteFormHtml(r){
+    var used = quotesThisMonth();
+    var limitReached = !isPaid(currentUser) && used >= FREE_QUOTES_PER_MONTH;
+    if(limitReached){
+      return '<div class="rfq-extra"><div class="upsell">'+
+        '<span>Usaste tus '+FREE_QUOTES_PER_MONTH+' cotizaciones gratis de este mes. Con Destacado son ilimitadas y además aparecés primero.</span>'+
+        '<button type="button" class="btn btn-accent btn-sm" data-open-planes-prov>Ver planes</button>'+
+      '</div></div>';
+    }
+    var note = currentUser.plan === "porcotizacion"
+      ? "Con tu plan, esta cotización se factura USD 8."
+      : (isPaid(currentUser) ? "Cotizaciones ilimitadas con tu plan." : "Te quedan "+(FREE_QUOTES_PER_MONTH - used)+" de "+FREE_QUOTES_PER_MONTH+" cotizaciones gratis este mes.");
+    return '<div class="rfq-extra" data-quote-form="'+r.id+'">'+
+      '<div class="form-grid">'+
+        '<div class="field"><label>Precio ofrecido</label><input type="text" maxlength="120" data-q-precio placeholder="p. ej. ARS 9.500.000 + IVA" /></div>'+
+        '<div class="field"><label>Plazo de entrega</label><input type="text" maxlength="120" data-q-plazo placeholder="p. ej. 10 días hábiles" /></div>'+
+      '</div>'+
+      '<div class="field"><label>Mensaje para el comprador</label><textarea rows="3" maxlength="2000" data-q-mensaje placeholder="Qué incluye, condiciones de pago, experiencia en trabajos similares…"></textarea></div>'+
+      '<div class="form-error" data-q-error hidden></div>'+
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'+
+        '<button type="button" class="btn btn-accent btn-sm" data-q-submit="'+r.id+'">Enviar cotización</button>'+
+        '<button type="button" class="btn btn-outline btn-sm" data-q-cancel="'+r.id+'">Cancelar</button>'+
+        '<span class="rfq-note">'+esc(note)+'</span>'+
+      '</div>'+
+    '</div>';
+  }
+
+  function quoteListHtml(r){
+    var list = receivedQuotes.filter(function(q){ return q.rfqId === r.id; });
+    if(!list.length){
+      return '<div class="rfq-extra"><p class="rfq-note">Todavía no recibiste cotizaciones para este requerimiento. Los proveedores Destacados ya recibieron el aviso.</p></div>';
+    }
+    return '<div class="rfq-extra">'+list.map(function(q){
+      return '<div class="quote-item">'+
+        '<div class="quote-top"><button type="button" data-goto-company="'+esc(q.supplierId)+'">'+esc(q.supplierName || "Proveedor")+'</button>'+
+          '<span class="mono">'+esc(q.precio || "Precio a definir")+'</span></div>'+
+        (q.plazo ? '<span class="rfq-note">Plazo: '+esc(q.plazo)+'</span>' : '')+
+        (q.mensaje ? '<p>'+esc(q.mensaje)+'</p>' : '')+
+      '</div>';
+    }).join('')+'</div>';
+  }
+
   function renderRfq(){
     var el = document.getElementById("rfqList");
     if(!rfqsLoaded){
@@ -1096,7 +1349,30 @@ var db = getFirestore(fbApp);
       el.innerHTML = '<div class="card card-pad" style="box-shadow:none;"><p style="font-size:.85rem;color:var(--ink-faint);">Todavía no hay requerimientos publicados. Sé el primero en publicar uno.</p></div>';
       return;
     }
+    // Conservar lo que alguien esté escribiendo en una cotización abierta.
+    var drafts = {};
+    el.querySelectorAll("[data-quote-form]").forEach(function(f){
+      drafts[f.getAttribute("data-quote-form")] = {
+        precio: f.querySelector("[data-q-precio]").value,
+        plazo: f.querySelector("[data-q-plazo]").value,
+        mensaje: f.querySelector("[data-q-mensaje]").value
+      };
+    });
     el.innerHTML = rfqs.map(function(r){
+      var isOwn = !!(currentUser && r.buyerId === currentUser.id);
+      var mine = currentUser ? myQuotes.filter(function(q){ return q.rfqId === r.id; })[0] : null;
+      var received = isOwn ? receivedQuotes.filter(function(q){ return q.rfqId === r.id; }).length : 0;
+      var action;
+      if(isOwn){
+        action = '<button class="btn btn-outline btn-sm" data-rfq-view="'+r.id+'">'+(openQuoteList[r.id] ? 'Ocultar cotizaciones' : 'Ver cotizaciones ('+received+')')+'</button>';
+      } else if(mine){
+        action = '<button class="btn btn-outline btn-sm" disabled>Ya cotizaste</button>';
+      } else {
+        action = '<button class="btn btn-accent btn-sm" data-rfq-quote="'+r.id+'">'+(openQuoteForm[r.id] ? 'Cerrar' : 'Cotizar ahora')+'</button>';
+      }
+      var extra = '';
+      if(isOwn && openQuoteList[r.id]) extra = quoteListHtml(r);
+      else if(!isOwn && !mine && openQuoteForm[r.id] && currentUser) extra = quoteFormHtml(r);
       return '<article class="card card-pad rfq-card">'+
         '<div class="top">'+
           '<div><h3>'+esc(r.title)+'</h3><div class="buyer">'+esc(r.buyerName || "Empresa de la red")+' · '+esc(r.location || "—")+'</div></div>'+
@@ -1107,9 +1383,455 @@ var db = getFirestore(fbApp);
           '<div><span>Entrega</span><b>'+esc(r.deadline)+'</b></div>'+
           '<div><span>Cotizaciones</span><b>'+(r.quotes||0)+'</b></div>'+
         '</div>'+
-        '<div class="rfq-foot"><span style="font-size:.76rem;color:var(--ink-faint);">'+esc(formatPostTime(r.createdAt))+'</span><button class="btn btn-accent btn-sm" disabled title="Próximamente">Cotizar ahora</button></div>'+
+        '<div class="rfq-foot"><span style="font-size:.76rem;color:var(--ink-faint);">'+esc(formatPostTime(r.createdAt))+'</span>'+action+'</div>'+
+        extra+
       '</article>';
     }).join('');
+    Object.keys(drafts).forEach(function(id){
+      var f = el.querySelector('[data-quote-form="'+id+'"]');
+      if(!f) return;
+      f.querySelector("[data-q-precio]").value = drafts[id].precio;
+      f.querySelector("[data-q-plazo]").value = drafts[id].plazo;
+      f.querySelector("[data-q-mensaje]").value = drafts[id].mensaje;
+    });
+  }
+
+  function submitQuote(rfqId, btn){
+    if(!currentUser){ openAuthDropdown("login"); return; }
+    var r = rfqs.filter(function(x){ return x.id === rfqId; })[0];
+    var form = document.querySelector('[data-quote-form="'+rfqId+'"]');
+    if(!r || !form) return;
+    var errEl = form.querySelector("[data-q-error]");
+    var precio = form.querySelector("[data-q-precio]").value.trim();
+    var plazo = form.querySelector("[data-q-plazo]").value.trim();
+    var mensaje = form.querySelector("[data-q-mensaje]").value.trim();
+    if(!precio && !mensaje){
+      errEl.textContent = "Completá al menos el precio o un mensaje para el comprador.";
+      errEl.hidden = false;
+      return;
+    }
+    if(!isPaid(currentUser) && quotesThisMonth() >= FREE_QUOTES_PER_MONTH){ renderRfq(); return; }
+    errEl.hidden = true;
+    btn.disabled = true;
+    btn.textContent = "Enviando…";
+    var batch = writeBatch(db);
+    batch.set(doc(db, "quotes", rfqId + "__" + currentUser.id), {
+      rfqId: rfqId,
+      rfqTitle: r.title || "",
+      buyerId: r.buyerId,
+      supplierId: currentUser.id,
+      supplierName: currentUser.name || "",
+      supplierPlan: currentUser.plan || "gratis",
+      precio: precio, plazo: plazo, mensaje: mensaje,
+      month: monthKey(),
+      createdAt: serverTimestamp()
+    });
+    batch.update(doc(db, "rfqs", rfqId), { quotes: increment(1) });
+    batch.commit().then(function(){
+      openQuoteForm[rfqId] = false;
+      trackEvent("quote_sent", { plan: currentUser.plan || "gratis" });
+      renderRfq();
+    }).catch(function(err){
+      errEl.textContent = "No se pudo enviar la cotización: " + err.message;
+      errEl.hidden = false;
+      btn.disabled = false;
+      btn.textContent = "Enviar cotización";
+    });
+  }
+
+  document.getElementById("rfqList").addEventListener("click", function(ev){
+    var q = ev.target.closest("[data-rfq-quote]");
+    if(q){
+      if(!currentUser){ openAuthDropdown("login"); return; }
+      var id = q.getAttribute("data-rfq-quote");
+      openQuoteForm[id] = !openQuoteForm[id];
+      renderRfq();
+      return;
+    }
+    var v = ev.target.closest("[data-rfq-view]");
+    if(v){
+      var id2 = v.getAttribute("data-rfq-view");
+      openQuoteList[id2] = !openQuoteList[id2];
+      renderRfq();
+      return;
+    }
+    var sub = ev.target.closest("[data-q-submit]");
+    if(sub){ submitQuote(sub.getAttribute("data-q-submit"), sub); return; }
+    var cancel = ev.target.closest("[data-q-cancel]");
+    if(cancel){ openQuoteForm[cancel.getAttribute("data-q-cancel")] = false; renderRfq(); return; }
+    if(ev.target.closest("[data-open-planes-prov]")){ switchView("planes"); switchPlanTab("proveedores"); return; }
+    var g = ev.target.closest("[data-goto-company]");
+    if(g){ openCompany(g.getAttribute("data-goto-company")); }
+  });
+
+  /* ---------- licitaciones públicas ----------
+     Las carga el equipo (o una tarea programada) con
+     scripts/cargar-licitaciones.mjs. Las reglas dejan leer a cualquiera solo
+     las marcadas preview:true (la muestra semanal); el resto, solo a planes
+     pagos. Por eso la consulta cambia según el plan. */
+  var activeRfqTab = "red";
+  var licitaciones = [];
+  var licitacionesKey = null;
+  var licitacionesTotal = null;
+  var licitacionRubro = "Todos";
+
+  function switchRfqTab(tab){
+    activeRfqTab = tab === "licitaciones" ? "licitaciones" : "red";
+    document.querySelectorAll("#rfqTabs [data-rfq-tab]").forEach(function(b){
+      b.setAttribute("aria-selected", b.getAttribute("data-rfq-tab") === activeRfqTab ? "true" : "false");
+    });
+    document.getElementById("rfqList").hidden = activeRfqTab !== "red";
+    document.getElementById("licitacionesWrap").hidden = activeRfqTab !== "licitaciones";
+    if(activeRfqTab === "licitaciones"){ document.getElementById("rfqForm").hidden = true; loadLicitaciones(); }
+  }
+  document.querySelectorAll("#rfqTabs [data-rfq-tab]").forEach(function(b){
+    b.addEventListener("click", function(){ switchRfqTab(b.getAttribute("data-rfq-tab")); });
+  });
+
+  function loadLicitaciones(){
+    var full = isPaid(currentUser);
+    var key = (currentUser ? currentUser.id : "anon") + ":" + (full ? "full" : "preview");
+    if(licitacionesKey === key){ renderLicitaciones(); return; }
+    licitacionesKey = key;
+    licitaciones = null;
+    renderLicitaciones();
+    var qy = full
+      ? query(collection(db, "licitaciones"), orderBy("createdAt", "desc"), limit(200))
+      : query(collection(db, "licitaciones"), where("preview", "==", true));
+    getDocs(qy).then(function(snap){
+      if(licitacionesKey !== key) return;
+      licitaciones = snap.docs.map(function(d){ var x = d.data(); x.id = d.id; return x; });
+      licitaciones.sort(function(x, y){ return ((tsToDate(y.createdAt) || 0) - (tsToDate(x.createdAt) || 0)); });
+      renderLicitaciones();
+    }).catch(function(err){
+      console.error("No se pudieron leer las licitaciones:", err);
+      licitaciones = [];
+      renderLicitaciones();
+    });
+    if(licitacionesTotal === null){
+      getDoc(doc(db, "stats", "licitaciones")).then(function(snap){
+        licitacionesTotal = snap.exists() ? (snap.data().total || 0) : 0;
+        renderLicitaciones();
+      }).catch(function(){ licitacionesTotal = 0; });
+    }
+  }
+
+  function renderLicitaciones(){
+    var list = document.getElementById("licitacionesList");
+    var filters = document.getElementById("licitacionFilters");
+    if(licitaciones === null){
+      filters.innerHTML = "";
+      list.innerHTML = '<p style="font-size:.85rem;color:var(--ink-faint);">Cargando licitaciones…</p>';
+      return;
+    }
+    var full = isPaid(currentUser);
+    var rubros = ["Todos"].concat(uniq(licitaciones.map(function(l){ return l.rubro || "Otros"; })));
+    if(rubros.indexOf(licitacionRubro) === -1) licitacionRubro = "Todos";
+    filters.innerHTML = rubros.length > 2 ? rubros.map(function(r){
+      return '<button class="chip" data-lic-rubro="'+esc(r)+'" aria-pressed="'+(r === licitacionRubro)+'">'+esc(r)+'</button>';
+    }).join('') : '';
+    filters.querySelectorAll("[data-lic-rubro]").forEach(function(b){
+      b.addEventListener("click", function(){ licitacionRubro = b.getAttribute("data-lic-rubro"); renderLicitaciones(); });
+    });
+    var shown = licitaciones.filter(function(l){ return licitacionRubro === "Todos" || (l.rubro || "Otros") === licitacionRubro; });
+    var html = shown.map(function(l){
+      return '<article class="card card-pad licitacion-card">'+
+        '<span class="revenue-tag">'+esc(l.rubro || "Licitación pública")+'</span>'+
+        '<h3>'+esc(l.titulo || "Licitación")+'</h3>'+
+        '<div class="meta">'+
+          (l.organismo ? '<span>'+esc(l.organismo)+'</span>' : '')+
+          (l.jurisdiccion ? '<span>· '+esc(l.jurisdiccion)+'</span>' : '')+
+          (l.apertura ? '<span>· Apertura: '+esc(l.apertura)+'</span>' : '')+
+        '</div>'+
+        (l.url ? '<div>'+fuenteLink(l.url, 'Ver pliego en '+(l.fuente || 'el portal oficial'))+'</div>' : '')+
+      '</article>';
+    }).join('');
+    if(!shown.length){
+      html = '<div class="card card-pad" style="box-shadow:none;"><p style="font-size:.85rem;color:var(--ink-faint);">Todavía no hay licitaciones cargadas'+(licitacionRubro !== "Todos" ? ' para este rubro' : '')+'.</p></div>';
+    }
+    if(!full){
+      var total = licitacionesTotal || 0;
+      var hidden = Math.max(0, total - licitaciones.length);
+      html += '<div class="upsell"><span>'+
+        (hidden ? 'Estás viendo '+licitaciones.length+' de '+total+' licitaciones abiertas. ' : 'Esta es la muestra semanal. ')+
+        'Con Destacado ves todas, filtradas por tu rubro, y te llegan por mail.</span>'+
+        '<button type="button" class="btn btn-accent btn-sm" data-open-planes-prov>Ver Destacado</button></div>';
+    }
+    list.innerHTML = html;
+    list.querySelectorAll("[data-open-planes-prov]").forEach(function(b){
+      b.addEventListener("click", function(){ switchView("planes"); switchPlanTab("proveedores"); });
+    });
+  }
+
+  function openRfqForm(){
+    if(!currentUser){ openAuthDropdown("login"); return; }
+    switchView("rfq");
+    switchRfqTab("red");
+    document.getElementById("rfqForm").hidden = false;
+    document.getElementById("fTitulo").focus();
+  }
+
+  /* ---------- reclamá tu perfil ----------
+     Las fichas que arrancaron desde fuentes públicas (no autoregistradas)
+     muestran un recuadro para que la empresa real la reclame. Se crea un
+     documento en "claims" que el equipo revisa a mano (ver la guía). El link
+     directo para los mails de outreach es SITE_URL + "#reclamar=<id>". */
+  var pendingClaimId = null;
+
+  function myClaimFor(companyId){
+    return myClaims.filter(function(x){ return x.companyId === companyId; })[0] || null;
+  }
+  function claimBoxHtml(c){
+    if(!c || c.selfRegistered || c.claimedBy) return '';
+    if(currentUser && currentUser.id === c.id) return '';
+    var claim = currentUser ? myClaimFor(c.id) : null;
+    if(claim){
+      var status = claim.status === "aprobado" ? "Tu reclamo fue aprobado. En breve vas a poder editar esta ficha desde tu cuenta."
+        : claim.status === "rechazado" ? "No pudimos validar tu reclamo. Escribinos si creés que es un error."
+        : "Recibimos tu pedido. Lo revisamos y te escribimos en 48 h hábiles.";
+      return '<div class="claim-box" id="claimBox"><b>Reclamo de esta ficha</b><p>'+esc(status)+'</p></div>';
+    }
+    return '<div class="claim-box" id="claimBox">'+
+      '<b>¿Trabajás en '+esc(c.name)+'?</b>'+
+      '<p>Esta ficha la armamos con fuentes públicas. Reclamala gratis para editarla, sumar tu contacto y empezar a recibir cotizaciones de las empresas de la red.</p>'+
+      '<div data-claim-step="start"><button type="button" class="btn btn-accent btn-sm" data-claim-start>Reclamar esta ficha</button></div>'+
+      '<div data-claim-step="form" hidden>'+
+        '<div class="field"><label>Tu cargo en la empresa</label><input type="text" maxlength="120" data-claim-cargo placeholder="p. ej. Gerente comercial" /></div>'+
+        '<div class="field" style="margin-top:10px;"><label>Comentario (opcional)</label><textarea rows="2" maxlength="1000" data-claim-msg placeholder="Algo que nos ayude a validar: tu email corporativo, web, etc."></textarea></div>'+
+        '<label class="check" style="margin-top:10px;"><input type="checkbox" data-claim-ok /> Declaro que trabajo en esta empresa y puedo representarla.</label>'+
+        '<div class="form-error" data-claim-error hidden></div>'+
+        '<div style="display:flex;gap:10px;margin-top:10px;"><button type="button" class="btn btn-accent btn-sm" data-claim-submit>Enviar pedido</button></div>'+
+      '</div>'+
+    '</div>';
+  }
+  function bindClaimBox(root, c){
+    var box = root.querySelector("#claimBox");
+    if(!box) return;
+    var start = box.querySelector("[data-claim-start]");
+    if(start) start.addEventListener("click", function(){
+      if(!currentUser){
+        pendingClaimId = c.id;
+        openAuthDropdown("register");
+        switchRegTab("proveedor");
+        document.getElementById("regEmpresa").value = c.name || "";
+        document.getElementById("regSector").value = c.sector || "";
+        document.getElementById("regUbicacion").value = c.ubicacion || "";
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      showClaimForm(box);
+    });
+    var submit = box.querySelector("[data-claim-submit]");
+    if(submit) submit.addEventListener("click", function(){
+      var cargo = box.querySelector("[data-claim-cargo]").value.trim();
+      var msg = box.querySelector("[data-claim-msg]").value.trim();
+      var ok = box.querySelector("[data-claim-ok]").checked;
+      var errEl = box.querySelector("[data-claim-error]");
+      if(!cargo || !ok){
+        errEl.textContent = "Completá tu cargo y confirmá que trabajás en la empresa.";
+        errEl.hidden = false;
+        return;
+      }
+      errEl.hidden = true;
+      submit.disabled = true;
+      submit.textContent = "Enviando…";
+      addDoc(collection(db, "claims"), {
+        companyId: c.id, companyName: c.name || "",
+        uid: currentUser.id, requesterCompany: currentUser.name || "",
+        cargo: cargo, mensaje: msg,
+        status: "pendiente",
+        createdAt: serverTimestamp()
+      }).then(function(){
+        trackEvent("profile_claim", {});
+      }).catch(function(err){
+        errEl.textContent = "No se pudo enviar el pedido: " + err.message;
+        errEl.hidden = false;
+        submit.disabled = false;
+        submit.textContent = "Enviar pedido";
+      });
+    });
+  }
+  function showClaimForm(box){
+    var s1 = box.querySelector('[data-claim-step="start"]');
+    var s2 = box.querySelector('[data-claim-step="form"]');
+    if(s1) s1.hidden = true;
+    if(s2){ s2.hidden = false; var i = s2.querySelector("[data-claim-cargo]"); if(i) i.focus(); }
+  }
+  function refreshOpenClaimBox(){
+    var detailView = document.getElementById("view-detail");
+    if(!detailView || detailView.hidden || !lastOpenCompanyId) return;
+    var c = companyById[lastOpenCompanyId];
+    var box = document.getElementById("claimBox");
+    if(!c || !box) return;
+    if(box.querySelector('[data-claim-step="form"]:not([hidden])') && !myClaimFor(c.id)) return; // está completando el form
+    var tmp = document.createElement("div");
+    tmp.innerHTML = claimBoxHtml(c);
+    if(tmp.firstChild){ box.replaceWith(tmp.firstChild); bindClaimBox(document.getElementById("detailCard"), c); }
+    else box.remove();
+  }
+  // Después de registrarse o loguearse desde "Reclamar esta ficha".
+  function resumePendingClaim(){
+    if(!pendingClaimId || !currentUser || !companyById[pendingClaimId]) return;
+    var id = pendingClaimId;
+    pendingClaimId = null;
+    openCompany(id);
+    var box = document.getElementById("claimBox");
+    if(box){ showClaimForm(box); box.scrollIntoView({ behavior: "smooth", block: "center" }); }
+  }
+
+  /* ---------- links directos: #empresa=<id> y #reclamar=<id> ---------- */
+  var deepLinkHandled = false;
+  function handleDeepLink(){
+    var m = /^#(empresa|reclamar)=(.+)$/.exec(window.location.hash || "");
+    if(!m) return;
+    var id = decodeURIComponent(m[2]);
+    if(!companyById[id]) return;
+    deepLinkHandled = true;
+    openCompany(id);
+    if(m[1] === "reclamar"){
+      trackEvent("claim_link_open", {});
+      var box = document.getElementById("claimBox");
+      if(box){
+        box.classList.add("is-highlight");
+        setTimeout(function(){ box.scrollIntoView({ behavior: "smooth", block: "center" }); }, 50);
+      }
+    }
+  }
+  window.addEventListener("hashchange", handleDeepLink);
+
+  /* ---------- panel: mi rendimiento ---------- */
+  var panelCache = { uid: null, at: 0, profileViews: [], contactViews: [] };
+
+  function loadPanelData(force){
+    var uid = currentUser.id;
+    if(!force && panelCache.uid === uid && Date.now() - panelCache.at < 60000) return Promise.resolve(panelCache);
+    return Promise.all([
+      getDocs(query(collection(db, "profileViews"), where("companyId", "==", uid))),
+      getDocs(query(collection(db, "contactViews"), where("companyId", "==", uid)))
+    ]).then(function(res){
+      panelCache = {
+        uid: uid, at: Date.now(),
+        profileViews: res[0].docs.map(function(d){ return d.data(); }),
+        contactViews: res[1].docs.map(function(d){ return d.data(); })
+      };
+      return panelCache;
+    });
+  }
+
+  function kpi(value, label){
+    return '<div class="card kpi"><b>'+esc(String(value))+'</b><span>'+esc(label)+'</span></div>';
+  }
+
+  function renderPanel(){
+    var body = document.getElementById("panelBody");
+    if(!currentUser){
+      body.innerHTML = '<div class="card card-pad" style="text-align:center;padding:30px 20px;">'+
+        '<p style="font-size:.9rem;font-weight:700;margin-bottom:6px;">Iniciá sesión para ver tu rendimiento</p>'+
+        '<p style="font-size:.82rem;color:var(--ink-soft);margin-bottom:14px;">Cuántas empresas vieron tu perfil, tus cotizaciones y las oportunidades de tu rubro.</p>'+
+        '<button type="button" class="btn btn-accent btn-sm" data-panel-login>Iniciar sesión</button></div>';
+      body.querySelector("[data-panel-login]").addEventListener("click", function(){ openAuthDropdown("login"); });
+      return;
+    }
+    body.innerHTML = '<p style="font-size:.85rem;color:var(--ink-faint);">Cargando tus métricas…</p>';
+    var uidAtStart = currentUser.id;
+    loadPanelData(false).then(function(data){
+      if(!currentUser || currentUser.id !== uidAtStart) return;
+      body.innerHTML = panelHtml(data);
+      body.querySelectorAll("[data-open-planes-prov]").forEach(function(b){
+        b.addEventListener("click", function(){ switchView("planes"); switchPlanTab("proveedores"); });
+      });
+      body.querySelectorAll("[data-panel-edit]").forEach(function(b){ b.addEventListener("click", openEditProfile); });
+      body.querySelectorAll("[data-panel-rfq]").forEach(function(b){ b.addEventListener("click", openRfqForm); });
+      body.querySelectorAll("[data-goto-company]").forEach(function(b){
+        b.addEventListener("click", function(){ openCompany(b.getAttribute("data-goto-company")); });
+      });
+    }).catch(function(err){
+      console.error("No se pudo cargar el panel:", err);
+      body.innerHTML = '<div class="card card-pad"><p style="font-size:.85rem;color:var(--ink-faint);">No se pudieron cargar tus métricas. Probá de nuevo en un rato.</p></div>';
+    });
+  }
+
+  function panelHtml(data){
+    var m = monthKey();
+    var paid = isPaid(currentUser);
+    var buyer = accountTypeOf(currentUser) === "empresa";
+    var pvMonth = data.profileViews.filter(function(v){ return v.month === m; });
+    var cvMonth = data.contactViews.filter(function(v){ return v.month === m; });
+    var buyerViewers = pvMonth.filter(function(v){ return v.viewerType === "empresa"; }).length;
+    var rfqsMonth = rfqs.filter(function(r){ var d = tsToDate(r.createdAt); return d && monthKey(d) === m; }).length;
+    var quotesMonth = quotesThisMonth();
+    var html = '';
+
+    // Garantía de Destacado
+    if(currentUser.plan === "destacado"){
+      var since = tsToDate(currentUser.planSince);
+      if(since){
+        var days = Math.floor((Date.now() - since.getTime()) / 86400000);
+        if(days <= GUARANTEE_DAYS){
+          var cvSince = data.contactViews.filter(function(v){ var d = tsToDate(v.createdAt); return d && d >= since; }).length;
+          var pct = Math.min(100, Math.round((days / GUARANTEE_DAYS) * 100));
+          html += '<div class="card card-pad panel-section">'+
+            '<h3>Garantía de 30 días</h3>'+
+            '<div class="progress"><span style="width:'+pct+'%"></span></div>'+
+            '<p style="font-size:.82rem;color:var(--ink-soft);">'+
+              (cvSince > 0
+                ? 'Ya '+(cvSince === 1 ? 'una empresa vio' : cvSince+' empresas vieron')+' tu contacto desde que sos Destacado. '
+                : 'Si en los primeros 30 días ninguna empresa ve tu contacto, el mes siguiente no lo pagás. ')+
+              'Quedan '+Math.max(0, GUARANTEE_DAYS - days)+' días de garantía.</p>'+
+          '</div>';
+        }
+      }
+    }
+
+    html += '<div class="kpi-grid">';
+    if(buyer && !isDestacado(currentUser)){
+      var myRfqs = rfqs.filter(function(r){ return r.buyerId === currentUser.id; });
+      html += kpi(myRfqs.length, "Requerimientos que publicaste") +
+        kpi(receivedQuotes.length, "Cotizaciones recibidas") +
+        kpi(pvMonth.length, "Empresas que vieron tu perfil este mes") +
+        kpi(rfqsMonth, "Requerimientos nuevos en la red este mes");
+    } else {
+      html += kpi(pvMonth.length, "Empresas que vieron tu perfil este mes") +
+        kpi(buyerViewers, "De esas, compradoras") +
+        kpi(cvMonth.length, "Vieron tu contacto este mes") +
+        kpi(paid ? quotesMonth : quotesMonth+" / "+FREE_QUOTES_PER_MONTH, "Cotizaciones que enviaste este mes") +
+        kpi(rfqsMonth, "Oportunidades nuevas en la red este mes");
+    }
+    html += '</div>';
+
+    // Quién vio tu perfil (los nombres son del plan pago)
+    if(pvMonth.length){
+      html += '<div class="card card-pad panel-section"><h3>Quién vio tu perfil este mes</h3><div class="viewer-list">'+
+        pvMonth.slice(0, 20).map(function(v){
+          return paid
+            ? '<button type="button" class="tag" style="border:0;cursor:pointer;" data-goto-company="'+esc(v.viewerId)+'">'+esc(v.viewerName || "Empresa")+'</button>'
+            : '<span class="tag blurred" aria-hidden="true">'+esc((v.viewerName || "Empresa de la red").replace(/\S/g, "x"))+'</span>';
+        }).join('')+'</div>'+
+        (paid ? '' : '<div class="upsell"><span>Con Destacado ves qué empresas te miraron y las podés contactar.</span><button type="button" class="btn btn-accent btn-sm" data-open-planes-prov>Ver Destacado</button></div>')+
+      '</div>';
+    } else if(!paid){
+      html += '<div class="card card-pad panel-section"><div class="upsell"><span>Los Destacados aparecen primero en el directorio y su contacto es visible para todas las empresas compradoras.</span><button type="button" class="btn btn-accent btn-sm" data-open-planes-prov>Ver Destacado</button></div></div>';
+    }
+
+    // Checklist de perfil: un perfil completo convierte más.
+    var items = [
+      { done: !!currentUser.photoDataUrl, text: "Subí el logo de tu empresa" },
+      { done: (currentUser.descripcion || "").length >= 80, text: "Escribí una descripción de al menos 80 caracteres" },
+      { done: !!currentUser.fuente, text: "Sumá una fuente pública (sube tu evidencia a Media-Alta)" },
+      { done: !!currentUser.verificada, text: "Pedí la verificación de TradeX" }
+    ];
+    var doneCount = items.filter(function(i){ return i.done; }).length;
+    html += '<div class="card card-pad panel-section"><h3>Tu perfil está '+Math.round(doneCount / items.length * 100)+'% completo</h3>'+
+      '<ul class="checklist">'+items.map(function(i){ return '<li class="'+(i.done ? 'done' : '')+'">'+(i.done ? '✓' : '○')+' '+esc(i.text)+'</li>'; }).join('')+'</ul>'+
+      (doneCount < items.length ? '<div><button type="button" class="btn btn-outline btn-sm" data-panel-edit>Editar perfil</button></div>' : '')+
+    '</div>';
+
+    if(buyer){
+      html += '<div class="card card-pad panel-section"><h3>¿Necesitás cotizar algo?</h3>'+
+        '<p style="font-size:.82rem;color:var(--ink-soft);">Publicá un requerimiento gratis y los proveedores de la red te cotizan.</p>'+
+        '<div><button type="button" class="btn btn-accent btn-sm" data-panel-rfq>Publicar requerimiento</button></div></div>';
+    }
+    return html;
   }
 
   /* ---------- company detail ---------- */
@@ -1140,16 +1862,24 @@ var db = getFirestore(fbApp);
       '</div>';
     }
     var loggedIn = !!currentUser;
+    var isBuyer = loggedIn && accountTypeOf(currentUser) === "empresa";
+    var gateTitle = isBuyer ? "Este proveedor todavía no es Destacado" : "Los datos de contacto son para cuentas pagas";
+    var gateText = isBuyer
+      ? "Publicá un requerimiento gratis: los proveedores de la red te cotizan por TradeX y ahí tenés su contacto."
+      : "Con el plan Destacado ves el contacto de las empresas y las empresas ven el tuyo.";
+    var gateBtn = isBuyer
+      ? '<button type="button" class="btn btn-accent btn-sm" data-open-rfq-form>Publicar requerimiento</button>'
+      : '<button type="button" class="btn btn-accent btn-sm" data-open-planes>Ver planes</button>';
     return '<div class="card card-pad" style="box-shadow:none;max-width:60ch;text-align:center;padding:28px 20px;">'+
       '<div style="width:40px;height:40px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">'+
         '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink-faint)" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>'+
       '</div>'+
       (loggedIn
-        ? '<p style="font-size:.88rem;color:var(--ink);margin-bottom:4px;font-weight:700;">Los datos de contacto son para cuentas pagas</p>'+
-          '<p style="font-size:.82rem;color:var(--ink-soft);margin-bottom:16px;">Disponibles desde el plan Pro (empresas) o Destacado (proveedores).</p>'+
-          '<button type="button" class="btn btn-accent btn-sm" data-open-planes>Ver planes</button>'
+        ? '<p style="font-size:.88rem;color:var(--ink);margin-bottom:4px;font-weight:700;">'+gateTitle+'</p>'+
+          '<p style="font-size:.82rem;color:var(--ink-soft);margin-bottom:16px;">'+gateText+'</p>'+
+          gateBtn
         : '<p style="font-size:.88rem;color:var(--ink);margin-bottom:4px;font-weight:700;">Iniciá sesión para ver el contacto</p>'+
-          '<p style="font-size:.82rem;color:var(--ink-soft);margin-bottom:16px;">Los datos de contacto están disponibles para cuentas con un plan pago.</p>'+
+          '<p style="font-size:.82rem;color:var(--ink-soft);margin-bottom:16px;">'+(isDestacado(c) ? 'Este proveedor es Destacado: cualquier empresa registrada ve su contacto, gratis.' : 'Registrate gratis y publicá un requerimiento para que te coticen.')+'</p>'+
           '<button type="button" class="btn btn-accent btn-sm" data-open-login>Iniciar sesión</button>'
       )+
     '</div>';
@@ -1187,11 +1917,15 @@ var db = getFirestore(fbApp);
     pane.querySelectorAll('[data-open-login]').forEach(function(b){
       b.addEventListener('click', function(){ openAuthDropdown('login'); });
     });
+    pane.querySelectorAll('[data-open-rfq-form]').forEach(function(b){
+      b.addEventListener('click', openRfqForm);
+    });
   }
   function renderContactPaneDetails(pane, c){
     if(!canViewContact(c)) return; // ya se renderizó la puerta (gate) de forma sincrónica
     getDoc(doc(db, "companies", c.id, "private", "contact")).then(function(snap){
       if(lastOpenCompanyId !== c.id) return; // el usuario navegó a otra ficha mientras tanto
+      logView("contactViews", c.id);
       if(snap.exists()){
         pane.innerHTML = contactVerifiedCardHtml(snap.data());
       } else {
@@ -1222,9 +1956,10 @@ var db = getFirestore(fbApp);
           '<span class="tag">'+esc(c.vinculo)+'</span>'+
           '<span class="tag">'+esc(c.sector)+'</span>'+
           '<span class="tag" style="display:inline-flex;align-items:center;gap:6px;">'+locationLine(c)+'</span>'+
-          verifiedBadge(c)+evidenceBadge(c.evidencia)+selfTag(c)+
+          destacadoBadge(c)+verifiedBadge(c)+evidenceBadge(c.evidencia)+selfTag(c)+
         '</div>'+
-        (c.descripcion ? '<p style="font-size:.95rem;line-height:1.6;color:var(--ink);max-width:70ch;">'+esc(c.descripcion)+'</p>' : ''),
+        (c.descripcion ? '<p style="font-size:.95rem;line-height:1.6;color:var(--ink);max-width:70ch;">'+esc(c.descripcion)+'</p>' : '')+
+        claimBoxHtml(c),
       contacto: contactPaneHtml(c),
       fuente: c.fuente ? (
         '<div class="card card-pad" style="box-shadow:none;max-width:60ch;">'+
@@ -1247,7 +1982,7 @@ var db = getFirestore(fbApp);
         '<div class="avatar-xl" style="background:'+AVATAR_COLORS[c.color]+'">'+avatarContent(c)+'</div>'+
         '<div class="detail-info"><h2>'+esc(c.name)+'</h2><p style="color:var(--ink-soft);font-size:.88rem;margin-top:2px;">'+esc(c.sector)+' · '+esc(c.vinculo)+' · '+esc(c.ubicacion || "Ubicación no especificada")+'</p></div>'+
         (isOwnProfile ? '<button type="button" class="btn btn-outline btn-sm" id="detailEditProfileBtn">Editar perfil</button>' : '')+
-        verifiedBadge(c)+evidenceBadge(c.evidencia)+
+        destacadoBadge(c)+verifiedBadge(c)+evidenceBadge(c.evidencia)+
       '</div>'+
       '<div class="detail-tabs" id="detailTabs">'+tabs.map(function(t){ return '<button data-tab="'+t.key+'" aria-selected="'+(t.key===activeTab)+'">'+t.label+'</button>'; }).join('')+'</div>'+
       tabs.map(function(t){ return '<div class="detail-pane" data-pane="'+t.key+'" '+(t.key===activeTab?'':'hidden')+'>'+panes[t.key]+'</div>'; }).join('');
@@ -1275,14 +2010,19 @@ var db = getFirestore(fbApp);
     card.querySelectorAll('[data-open-login]').forEach(function(b){
       b.addEventListener('click', function(){ openAuthDropdown('login'); });
     });
+    card.querySelectorAll('[data-open-rfq-form]').forEach(function(b){
+      b.addEventListener('click', openRfqForm);
+    });
+    bindClaimBox(card, c);
 
+    logView("profileViews", id);
     switchView("detail");
   }
 
   /* ---------- suggestions ---------- */
   function renderSuggestions(){
     var el = document.getElementById("suggestList");
-    var suggestions = companies.slice(0,4);
+    var suggestions = companies.filter(isDestacado).concat(companies.filter(function(c){ return !isDestacado(c); })).slice(0,4);
     el.innerHTML = suggestions.map(function(c){
       return '<div class="suggest-item">'+
         '<div class="avatar-sm" style="background:'+AVATAR_COLORS[c.color]+'">'+avatarContent(c)+'</div>'+
@@ -1299,13 +2039,15 @@ var db = getFirestore(fbApp);
     var isPlanes = name === "planes";
     document.querySelector("main.layout").hidden = isPlanes;
     document.getElementById("view-planes").hidden = !isPlanes;
-    ["feed","directorio","rfq","detail","mapa"].forEach(function(v){
+    ["feed","directorio","rfq","detail","mapa","panel"].forEach(function(v){
       document.getElementById("view-"+v).hidden = (isPlanes || v !== name);
     });
     document.querySelectorAll('#topNav button').forEach(function(b){
       b.setAttribute('aria-current', b.getAttribute('data-nav') === name ? "true" : "false");
     });
     window.scrollTo({top:0, behavior:"auto"});
+    if(name === "panel") renderPanel();
+    if(name === "rfq" && activeRfqTab === "licitaciones") loadLicitaciones();
     // TradeX es una sola página real (no hay recarga entre secciones), así
     // que GA4 no ve "pageviews" solo. Se avisan a mano acá para poder medir
     // en qué sección se cae la gente (por ejemplo, cuántos llegan a "planes"
@@ -1330,6 +2072,7 @@ var db = getFirestore(fbApp);
 
   document.getElementById("toggleRfqForm").addEventListener('click', function(){
     if(!currentUser){ openAuthDropdown("login"); return; }
+    switchRfqTab("red");
     var f = document.getElementById("rfqForm");
     f.hidden = !f.hidden;
   });

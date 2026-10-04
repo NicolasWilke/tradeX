@@ -10,49 +10,61 @@ service cloud.firestore {
     // sin necesidad de estar logueado), pero cada empresa solo puede crear
     // o modificar SU PROPIO documento (el id del documento = su uid de Auth).
     //
-    // El campo "plan" NO se puede escribir libremente desde el cliente:
-    // solo puede crearse en "gratis", y ninguna actualización puede cambiarlo.
-    // Hasta que exista una integración de pagos real (Mercado Pago + una
-    // Cloud Function que valide el cobro y recién ahí actualice este campo
-    // con permisos de administrador), "plan" queda congelado en "gratis"
-    // para todo el mundo. Esto es lo que evita que cualquiera se autoasigne
-    // un plan pago haciendo updateDoc desde la consola del navegador.
-    //
-    // El campo "verificada" funciona igual: nace en false y queda congelado
-    // contra el cliente. El equipo de TradeX lo pone en true a mano, desde
-    // Firebase Console, después de revisar la documentación de la empresa
-    // (constancia de CUIT/inscripción) — es un proceso manual, no automático,
-    // así que ninguna empresa puede autoverificarse haciendo updateDoc.
+    // El campo "plan" (y los demás de adminFields) NO se puede escribir
+    // desde el cliente: nace en "gratis" y solo lo cambia la Cloud Function
+    // del webhook de Mercado Pago cuando el cobro se aprueba, o el equipo a
+    // mano desde Firebase Console. Así nadie se autoasigna un plan pago
+    // haciendo updateDoc desde la consola del navegador. "verificada" igual:
+    // nace en false y la pone en true el equipo después de revisar la
+    // documentación de la empresa.
+    // Campos que maneja solo el equipo de TradeX o las Cloud Functions
+    // (que usan permisos de administrador y no pasan por estas reglas).
+    function adminFields(){
+      return ['plan', 'verificada', 'planSince', 'planBilling', 'planUntil',
+              'mpPreapprovalId', 'claimedBy', 'verificacionPagada'];
+    }
+    function paidPlans(){
+      return ['destacado', 'porcotizacion', 'enterprise', 'pro'];
+    }
+    function myCompany(){
+      return get(/databases/$(database)/documents/companies/$(request.auth.uid)).data;
+    }
+    function iAmPaid(){
+      return request.auth != null && myCompany().get('plan', 'gratis') in paidPlans();
+    }
+
     match /companies/{companyId} {
       allow read: if true;
       allow create: if request.auth != null
                     && request.auth.uid == companyId
                     && request.resource.data.plan == "gratis"
-                    && request.resource.data.verificada == false;
-      // Ojo con esta regla: usa .get(campo, valor_por_defecto) en vez de
-      // comparar el campo directo. Las empresas que se registraron ANTES de
-      // que existiera "verificada" (o incluso "plan", en las cuentas más
-      // viejas) no tienen ese campo en su documento — comparar un campo que
-      // no existe tira error de evaluación en las reglas, y eso se ve del
-      // lado del cliente como "Missing or insufficient permissions" al
-      // guardar cualquier cambio de perfil, aunque no toque ese campo.
+                    && request.resource.data.verificada == false
+                    && !request.resource.data.keys().hasAny(['planSince', 'planBilling', 'planUntil', 'mpPreapprovalId', 'claimedBy', 'verificacionPagada']);
+      // diff().affectedKeys() cubre campos agregados, cambiados y borrados,
+      // y no falla con documentos viejos que no tienen esos campos.
       allow update: if request.auth != null
                     && request.auth.uid == companyId
-                    && request.resource.data.get('plan', 'gratis') == resource.data.get('plan', 'gratis')
-                    && request.resource.data.get('verificada', false) == resource.data.get('verificada', false);
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(adminFields());
       allow delete: if false;
 
-      // Datos de contacto (nombre, email, teléfono) de la empresa: viven
-      // separados del documento público para que puedan protegerse de
-      // verdad. Solo la propia empresa puede leer y escribir su contacto;
-      // otra empresa recién podrá leerlo cuando tenga un plan pago real
-      // (por ahora eso no puede pasar, porque "plan" está congelado en
-      // "gratis" — ver el comentario de arriba).
+      // Datos de contacto. Los puede leer:
+      //  - la propia empresa;
+      //  - cualquier cuenta con plan pago;
+      //  - cualquier empresa compradora, si esta ficha es de un proveedor
+      //    Destacado (es lo que paga el Destacado).
       match /private/contact {
         allow read: if request.auth != null
                     && (request.auth.uid == companyId
-                        || get(/databases/$(database)/documents/companies/$(request.auth.uid)).data.plan != "gratis");
+                        || iAmPaid()
+                        || (get(/databases/$(database)/documents/companies/$(companyId)).data.get('plan', 'gratis') == 'destacado'
+                            && myCompany().get('accountType', 'empresa') == 'empresa'));
         allow write: if request.auth != null && request.auth.uid == companyId;
+      }
+
+      // Reportes mensuales que genera la Cloud Function: solo los lee el dueño.
+      match /reports/{reportId} {
+        allow read: if request.auth != null && request.auth.uid == companyId;
+        allow write: if false;
       }
     }
 
@@ -96,8 +108,89 @@ service cloud.firestore {
     match /rfqs/{rfqId} {
       allow read: if true;
       allow create: if request.auth != null
-                    && request.resource.data.buyerId == request.auth.uid;
+                    && request.resource.data.buyerId == request.auth.uid
+                    && request.resource.data.get('quotes', 0) == 0;
+      // La única actualización permitida es sumar 1 al contador de
+      // cotizaciones, en el mismo batch en que esa empresa crea su
+      // cotización (y solo si no había cotizado antes).
+      allow update: if request.auth != null
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quotes'])
+                    && request.resource.data.quotes == resource.data.get('quotes', 0) + 1
+                    && existsAfter(/databases/$(database)/documents/quotes/$(rfqId + '__' + request.auth.uid))
+                    && !exists(/databases/$(database)/documents/quotes/$(rfqId + '__' + request.auth.uid));
+      allow delete: if false;
+    }
+
+    // Cotizaciones: una por proveedor y requerimiento (id "<rfqId>__<uid>").
+    // Las ve solo quien cotizó y la empresa que publicó el requerimiento.
+    // Nota: el tope de 3 cotizaciones por mes del plan Gratis se controla
+    // en la app; las reglas no pueden contar documentos.
+    match /quotes/{quoteId} {
+      allow read: if request.auth != null
+                  && (resource.data.supplierId == request.auth.uid
+                      || resource.data.buyerId == request.auth.uid);
+      allow create: if request.auth != null
+                    && request.resource.data.supplierId == request.auth.uid
+                    && quoteId == request.resource.data.rfqId + '__' + request.auth.uid
+                    && request.resource.data.buyerId == get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data.buyerId
+                    && request.resource.data.buyerId != request.auth.uid
+                    && request.resource.data.mensaje is string
+                    && request.resource.data.mensaje.size() <= 2000
+                    && request.resource.data.precio is string
+                    && request.resource.data.precio.size() <= 120;
       allow update, delete: if false;
+    }
+
+    // Vistas de perfil y de contacto (métricas del panel y la garantía).
+    // Un documento por empresa vista + empresa que mira + mes. Solo el
+    // dueño de la ficha las puede leer.
+    match /profileViews/{viewId} {
+      allow read: if request.auth != null && resource.data.companyId == request.auth.uid;
+      allow create: if request.auth != null
+                    && request.resource.data.viewerId == request.auth.uid
+                    && request.resource.data.companyId != request.auth.uid
+                    && viewId == request.resource.data.companyId + '__' + request.auth.uid + '__' + request.resource.data.month;
+      allow update, delete: if false;
+    }
+    match /contactViews/{viewId} {
+      allow read: if request.auth != null && resource.data.companyId == request.auth.uid;
+      allow create: if request.auth != null
+                    && request.resource.data.viewerId == request.auth.uid
+                    && request.resource.data.companyId != request.auth.uid
+                    && viewId == request.resource.data.companyId + '__' + request.auth.uid + '__' + request.resource.data.month;
+      allow update, delete: if false;
+    }
+
+    // Pedidos de plan / add-ons mientras no esté activo el cobro automático.
+    // Los crea la empresa logueada; el equipo los ve desde la consola.
+    match /planRequests/{reqId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.status == 'pendiente';
+      allow update, delete: if false;
+    }
+
+    // "Reclamá tu perfil": pedidos que el equipo revisa a mano.
+    match /claims/{claimId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.status == 'pendiente'
+                    && request.resource.data.companyId is string;
+      allow update, delete: if false;
+    }
+
+    // Licitaciones públicas: las carga el equipo con
+    // scripts/cargar-licitaciones.mjs. Cualquiera ve la muestra
+    // (preview == true); el listado completo es para planes pagos.
+    match /licitaciones/{licId} {
+      allow read: if resource.data.get('preview', false) == true || iAmPaid();
+      allow write: if false;
+    }
+    match /stats/{statId} {
+      allow read: if true;
+      allow write: if false;
     }
 
     // Registro de errores del cliente (monitoreo básico, sin Sentry ni

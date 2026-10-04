@@ -1,0 +1,13 @@
+{
+  "name": "tradex-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Scripts de administración de TradeX (corren en tu computadora con una cuenta de servicio de Firebase).",
+  "scripts": {
+    "licitaciones": "node cargar-licitaciones.mjs",
+    "links-reclamo": "node links-reclamo.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

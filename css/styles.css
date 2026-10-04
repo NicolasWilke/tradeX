@@ -477,3 +477,53 @@
   .revenue-card b{ font-size:.9rem; }
   .revenue-card p{ font-size:.8rem; color:var(--ink-soft); line-height:1.5; }
   .revenue-card .revenue-tag{ font-family:var(--font-mono); font-size:.64rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint); }
+
+  /* ---------- Monetización: planes, cotizaciones, panel, reclamo, licitaciones ---------- */
+  .pricing-grid.two{ grid-template-columns:repeat(2,1fr); max-width:760px; margin-inline:auto; }
+  @media (max-width:900px){ .pricing-grid.two{ grid-template-columns:1fr; } }
+  .plan-features li b{ color:var(--ink); }
+  .plan-card .plan-price[hidden]{ display:none; }
+  #panelBody{ display:flex; flex-direction:column; gap:14px; }
+  .plans-note{ text-align:center; font-size:.76rem; color:var(--ink-faint); margin-top:14px; }
+
+  .billing-toggle{ display:flex; justify-content:center; gap:4px; margin:-10px auto 22px; background:var(--surface-2); padding:4px; border-radius:999px; width:max-content; max-width:100%; }
+  .billing-toggle button{ border:0; background:none; padding:7px 16px; border-radius:999px; font-size:.8rem; font-weight:700; color:var(--ink-soft); cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+  .billing-toggle button[aria-pressed="true"]{ background:var(--surface); color:var(--ink); box-shadow:var(--shadow-sm); }
+  .billing-save{ font-size:.66rem; font-weight:800; color:var(--success); background:color-mix(in srgb, var(--success) 12%, white); padding:2px 7px; border-radius:999px; }
+
+  .tag-destacado{ display:inline-flex; align-items:center; gap:5px; background:color-mix(in srgb, var(--warning) 16%, white); color:#7A5A12; }
+
+  .rfq-tabs{ max-width:440px; margin-bottom:0; }
+  .rfq-extra{ margin-top:14px; border-top:1px solid var(--border); padding-top:14px; display:flex; flex-direction:column; gap:10px; }
+  .rfq-extra .field textarea{ min-height:70px; }
+  .rfq-note{ font-size:.76rem; color:var(--ink-faint); }
+  .quote-item{ display:flex; flex-direction:column; gap:4px; padding:12px; border:1px solid var(--border); border-radius:var(--radius-s); }
+  .quote-item .quote-top{ display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:.86rem; }
+  .quote-item .quote-top button{ background:none; border:0; padding:0; font:inherit; font-weight:800; color:var(--accent-strong); cursor:pointer; text-align:left; }
+  .quote-item p{ font-size:.82rem; color:var(--ink-soft); line-height:1.5; white-space:pre-wrap; }
+
+  .upsell{ border:1px dashed var(--accent-strong); background:color-mix(in srgb, var(--accent) 10%, var(--surface)); border-radius:var(--radius-s); padding:12px 14px; display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; font-size:.82rem; color:var(--ink); }
+
+  .kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .kpi{ padding:16px; display:flex; flex-direction:column; gap:4px; }
+  .kpi b{ font-family:var(--font-display); font-size:1.8rem; line-height:1.1; }
+  .kpi span{ font-size:.76rem; color:var(--ink-soft); line-height:1.4; }
+  .panel-section{ display:flex; flex-direction:column; gap:10px; }
+  .panel-section h3{ font-size:.98rem; }
+  .viewer-list{ display:flex; flex-wrap:wrap; gap:8px; }
+  .viewer-list .blurred{ filter:blur(4px); user-select:none; }
+  .progress{ height:8px; background:var(--surface-2); border-radius:999px; overflow:hidden; }
+  .progress > span{ display:block; height:100%; background:var(--accent-strong); border-radius:999px; }
+  .checklist{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; font-size:.84rem; }
+  .checklist li{ display:flex; gap:8px; align-items:flex-start; }
+  .checklist li.done{ color:var(--ink-faint); text-decoration:line-through; }
+
+  .claim-box{ margin-top:18px; max-width:70ch; border:1px solid var(--accent-3); background:color-mix(in srgb, var(--accent-3) 12%, var(--surface)); border-radius:var(--radius-m); padding:16px; display:flex; flex-direction:column; gap:10px; }
+  .claim-box.is-highlight{ box-shadow:0 0 0 3px var(--accent-3-strong); }
+  .claim-box b{ font-size:.92rem; }
+  .claim-box p{ font-size:.82rem; color:var(--ink-soft); line-height:1.5; }
+  .claim-box label.check{ display:flex; gap:8px; align-items:flex-start; font-size:.8rem; color:var(--ink-soft); }
+
+  .licitacion-card{ display:flex; flex-direction:column; gap:6px; }
+  .licitacion-card h3{ font-size:.95rem; }
+  .licitacion-card .meta{ display:flex; gap:8px; flex-wrap:wrap; font-size:.76rem; color:var(--ink-soft); }
